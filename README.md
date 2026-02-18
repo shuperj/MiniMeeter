@@ -4,8 +4,6 @@ A lightweight, always-on-top audio mixer for [Voicemeeter Banana](https://vb-aud
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
-<!-- Add a screenshot: ![MiniMeeter](screenshot.png) -->
-
 ## Features
 
 - **Compact & resizable** - Starts at 420x340, shrinks down to 200x275 (Plexamp-sized)
