@@ -1,0 +1,33 @@
+[package]
+name = "minimeeter"
+version = "1.0.0"
+edition = "2021"
+
+[lib]
+name = "minimeeter_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-store = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libloading = "0.8"
+window-vibrancy = "0.5"
+
+[dependencies.windows]
+version = "0.58"
+features = [
+  "UI_ViewManagement",
+  "Win32_Graphics_Dwm",
+  "Win32_Foundation",
+]
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

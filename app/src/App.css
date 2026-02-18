@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+  --accent: #3a86ff;
+  --accent-fg: #ffffff;
+  --accent-r: 58;
+  --accent-g: 134;
+  --accent-b: 255;
+  --glass-opacity: 0.55;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100dvh;
+  width: 100dvw;
+  background: transparent;
+}
+
+/* Glass overlay on the main content area — opacity controlled by --glass-opacity */
+#root > div {
+  background: rgba(30, 30, 30, var(--glass-opacity));
+  transition: background 0.3s ease;
+}
+
+/* Select dropdown styling */
+select option {
+  background: #1e1e1e;
+  color: #ffffff;
+}
+
+/* Scrollbar hide for tiny windows */
+::-webkit-scrollbar {
+  display: none;
+}
