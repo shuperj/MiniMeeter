@@ -42,6 +42,10 @@ pub fn run() {
                 })
                 .build(),
         )
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(VmState {
             api: Mutex::new(None),

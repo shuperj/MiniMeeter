@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { enable as autostartEnable, disable as autostartDisable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ChannelConfig, A1Device } from "../config";
 import { STRIP_LABELS, DRIVER_OPTIONS } from "../config";
@@ -68,6 +69,9 @@ export default function SettingsPanel({
   const [styleDraft, setStyleDraft] = useState<StyleSettings>(DEFAULT_STYLE_SETTINGS);
 
   // Hotkey recording state: index of channel currently being recorded, or null
+  const [autostartEnabled, setAutostartEnabled] = useState(false);
+
+  // Hotkey recording state: index of channel currently being recorded, or null
   const [recordingIdx, setRecordingIdx] = useState<number | null>(null);
   const recordingRef = useRef<number | null>(null);
 
@@ -104,6 +108,17 @@ export default function SettingsPanel({
     setOutDraft(outputs.map((o) => ({ ...o })));
     setDecayDraft(meterDecay);
     setStyleDraft({ ...DEFAULT_STYLE_SETTINGS, ...styleSettings });
+    autostartIsEnabled().then(setAutostartEnabled).catch(() => setAutostartEnabled(false));
+  };
+
+  const handleAutostartToggle = async (checked: boolean) => {
+    setAutostartEnabled(checked);
+    try {
+      if (checked) await autostartEnable();
+      else await autostartDisable();
+    } catch {
+      setAutostartEnabled(!checked);
+    }
   };
 
   // Live preview style changes when on style tab
@@ -382,15 +397,31 @@ export default function SettingsPanel({
               )}
 
               {tab === "style" && (
-                <StyleTab
-                  draft={styleDraft}
-                  onChange={setStyleDraft}
-                  meterDecay={decayDraft}
-                  onMeterDecayChange={setDecayDraft}
-                  smallText={smallText}
-                  medText={medText}
-                  inputCls={inputCls}
-                />
+                <>
+                  <StyleTab
+                    draft={styleDraft}
+                    onChange={setStyleDraft}
+                    meterDecay={decayDraft}
+                    onMeterDecayChange={setDecayDraft}
+                    smallText={smallText}
+                    medText={medText}
+                    inputCls={inputCls}
+                  />
+                  <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
+                    <span className={`${medText} font-semibold text-white/80`}>Startup</span>
+                    <div className={`flex items-center gap-1 ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
+                      <label className="flex items-center gap-1 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={autostartEnabled}
+                          onChange={(e) => handleAutostartToggle(e.target.checked)}
+                          className="accent-[var(--accent)] cursor-pointer"
+                        />
+                        Launch on startup
+                      </label>
+                    </div>
+                  </div>
+                </>
               )}
 
               {tab === "outputs" && (
