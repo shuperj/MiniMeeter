@@ -1,6 +1,6 @@
 # MiniMeeter
 
-A lightweight, always-on-top audio mixer for [Voicemeeter Banana](https://vb-audio.com/Voicemeeter/banana.htm) on Windows. Designed to be small enough to sit alongside Plexamp or Spotify, but powerful enough to replace the full Voicemeeter UI for day-to-day mixing.
+A lightweight, easily resizeable audio mixer for [Voicemeeter Banana](https://vb-audio.com/Voicemeeter/banana.htm) on Windows. Designed to be small enough to sit alongside Plexamp or Spotify, but powerful enough to replace the full Voicemeeter UI for day-to-day mixing.
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
