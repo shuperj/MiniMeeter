@@ -4,8 +4,7 @@ A lightweight, always-on-top audio mixer for [Voicemeeter Banana](https://vb-aud
 
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
-![Recording 2026-02-17 192825](https://github.com/user-attachments/assets/1ba443fb-7f42-49b6-93ff-a8d1643ad4c5)
-
+![demo](https://github.com/user-attachments/assets/b0860237-e307-4641-a978-77883a539658)
 
 ## Features
 
