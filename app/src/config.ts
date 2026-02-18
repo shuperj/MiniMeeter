@@ -36,12 +36,7 @@ export const STRIP_LABELS: Record<number, string> = {
   4: "Virtual Input 2",
 };
 
-export const DEFAULT_A1_CHOICES: A1Device[] = [
-  { driver: "asio", name: "Focusrite USB ASIO", display: "ASIO: Focusrite USB ASIO" },
-  { driver: "mme", name: "Speakers (JBL Quantum TWS)", display: "MME: Speakers (JBL Quantum TWS)" },
-];
-
-export const A1_CHOICES = DEFAULT_A1_CHOICES;
+export const DEFAULT_A1_CHOICES: A1Device[] = [];
 
 export const DRIVER_OPTIONS = ["asio", "wdm", "ks", "mme"] as const;
 

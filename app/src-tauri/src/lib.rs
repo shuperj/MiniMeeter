@@ -2,10 +2,12 @@ mod accent;
 mod commands;
 mod voicemeeter;
 
-use commands::VmState;
+use commands::{ShortcutMap, VmState};
+use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, WebviewWindow};
+use tauri_plugin_global_shortcut::ShortcutState;
 
 pub struct WindowState {
     pub window: Mutex<Option<WebviewWindow>>,
@@ -14,11 +16,39 @@ pub struct WindowState {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        let shortcut_str = shortcut.to_string();
+                        let sm: tauri::State<ShortcutMap> = app.state();
+                        let strip = {
+                            let Ok(map) = sm.map.lock() else { return };
+                            match map.get(&shortcut_str) {
+                                Some(&s) => s,
+                                None => return,
+                            }
+                        };
+                        // ShortcutMap lock released — now acquire the VM lock
+                        let vs: tauri::State<VmState> = app.state();
+                        let Ok(guard) = vs.api.lock() else { return };
+                        if let Some(ref api) = *guard {
+                            let param = format!("Strip[{strip}].Mute");
+                            let current = api.get_float(&param).unwrap_or(0.0);
+                            let new_val = if current >= 1.0 { 0.0 } else { 1.0 };
+                            let _ = api.set_float(&param, new_val);
+                        }
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_store::Builder::default().build())
         .manage(VmState {
             api: Mutex::new(None),
             polling: Arc::new(AtomicBool::new(false)),
+        })
+        .manage(ShortcutMap {
+            map: Mutex::new(HashMap::new()),
         })
         .manage(WindowState {
             window: Mutex::new(None),
@@ -48,9 +78,11 @@ pub fn run() {
             commands::vm_set_mute,
             commands::vm_get_all_strips,
             commands::vm_set_a1_device,
+            commands::vm_get_a1_device,
             commands::vm_restart_engine,
             commands::get_accent_color,
             commands::set_acrylic,
+            commands::vm_sync_shortcuts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

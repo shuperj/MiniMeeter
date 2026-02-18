@@ -5,6 +5,8 @@ import WindowStateStyleEditor from "./WindowStateStyleEditor";
 interface StyleTabProps {
   draft: StyleSettings;
   onChange: (next: StyleSettings) => void;
+  meterDecay: number;
+  onMeterDecayChange: (decay: number) => void;
   smallText: string;
   medText: string;
   inputCls: string;
@@ -13,6 +15,8 @@ interface StyleTabProps {
 export default function StyleTab({
   draft,
   onChange,
+  meterDecay,
+  onMeterDecayChange,
   smallText,
   medText,
   inputCls,
@@ -58,6 +62,26 @@ export default function StyleTab({
               <span className="tabular-nums">{draft.customAccentColor}</span>
             </>
           )}
+        </div>
+      </div>
+
+      {/* Meter decay */}
+      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
+        <span className={`${medText} font-semibold text-white/80`}>Meter Decay</span>
+        <div className={`flex items-center gap-[clamp(4px,1vw,8px)] ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
+          <input
+            type="range"
+            min="0.05"
+            max="2"
+            step="0.05"
+            value={meterDecay}
+            onChange={(e) => onMeterDecayChange(Number(e.target.value))}
+            onDoubleClick={() => onMeterDecayChange(0.3)}
+            className="flex-1 min-w-[clamp(40px,10vw,80px)] accent-[var(--accent)] cursor-pointer"
+          />
+          <span className={`${smallText} text-white/60 tabular-nums w-[4ch] text-right`}>
+            {meterDecay < 0.15 ? "Slow" : meterDecay > 1.5 ? "Fast" : meterDecay.toFixed(2)}
+          </span>
         </div>
       </div>
 

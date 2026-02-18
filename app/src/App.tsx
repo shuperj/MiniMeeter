@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { A1Device } from "./config";
 import { useVoicemeeter } from "./hooks/useVoicemeeter";
 import { useAccentColor } from "./hooks/useAccentColor";
 import { useChannelConfig } from "./hooks/useChannelConfig";
@@ -78,22 +79,32 @@ export default function App() {
     }
   }, [bgProps.isAcrylic, focused, styleLoaded]);
 
-  const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded } = useChannelConfig();
-  const { connected, error, channels, levels, busLevels, setGain, setMute, startDragging, stopDragging } =
+  const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded, needsOutputSetup, setNeedsOutputSetup } = useChannelConfig();
+  const { connected, error, channels, levels, busGains, setGain, setMute, startDragging, stopDragging } =
     useVoicemeeter(channelConfigs);
   const [selectedA1, setSelectedA1] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  // Global hotkey → toggle mute for the given strip
-  const channelsRef = useRef(channels);
-  useEffect(() => { channelsRef.current = channels; }, [channels]);
+  // Auto-detect A1 output device on first run
+  const autoDetectRan = useRef(false);
+  useEffect(() => {
+    if (!connected || !needsOutputSetup || autoDetectRan.current) return;
+    autoDetectRan.current = true;
+    (async () => {
+      try {
+        const device = await invoke<A1Device | null>("vm_get_a1_device");
+        if (device) {
+          saveOutputs([device]);
+          setNeedsOutputSetup(false);
+        }
+      } catch {
+        // Non-critical — user can configure manually
+      }
+    })();
+  }, [connected, needsOutputSetup, saveOutputs, setNeedsOutputSetup]);
 
-  const toggleMute = useCallback((strip: number) => {
-    const state = channelsRef.current.get(strip);
-    if (state) setMute(strip, !state.muted);
-  }, [setMute]);
-
-  useGlobalShortcuts(channelConfigs, toggleMute);
+  // Sync mute hotkey configs to Rust — shortcuts are handled entirely in Rust
+  useGlobalShortcuts(channelConfigs);
 
   // Master level for visualizers: max of all strip levels
   const masterLevel = useMemo(() => {
@@ -132,7 +143,7 @@ export default function App() {
         a1Choices={outputs}
         onA1Change={setSelectedA1}
         onSettingsClick={() => setSettingsOpen(true)}
-        busLevel={busLevels.get(0) ?? 0}
+        busGain={busGains.get(0) ?? 0}
         showOutputLevel={effectiveSettings.showOutputLevel}
       />
 

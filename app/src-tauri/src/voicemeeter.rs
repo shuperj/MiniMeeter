@@ -11,6 +11,8 @@ type FnSetString = unsafe extern "C" fn(*const c_char, *const c_char) -> c_long;
 type FnGetString = unsafe extern "C" fn(*const c_char, *mut c_char) -> c_long;
 type FnIsDirty = unsafe extern "C" fn() -> c_long;
 type FnGetLevel = unsafe extern "C" fn(c_long, c_long, *mut c_float) -> c_long;
+type FnOutputGetDeviceNumber = unsafe extern "C" fn() -> c_long;
+type FnOutputGetDeviceDesc = unsafe extern "C" fn(c_long, *mut c_long, *mut c_char, *mut c_char) -> c_long;
 
 pub struct VoicemeeterAPI {
     _lib: Library,
@@ -22,6 +24,8 @@ pub struct VoicemeeterAPI {
     fn_get_string: FnGetString,
     fn_is_dirty: FnIsDirty,
     fn_get_level: FnGetLevel,
+    fn_output_get_device_number: Option<FnOutputGetDeviceNumber>,
+    fn_output_get_device_desc: Option<FnOutputGetDeviceDesc>,
     logged_in: bool,
 }
 
@@ -64,6 +68,12 @@ impl VoicemeeterAPI {
             let fn_get_level: Symbol<FnGetLevel> = lib.get(b"VBVMR_GetLevel")
                 .map_err(|e| format!("Missing VBVMR_GetLevel: {e}"))?;
 
+            // Optional device enumeration functions (may not exist in older DLLs)
+            let fn_output_get_device_number: Option<FnOutputGetDeviceNumber> =
+                lib.get::<FnOutputGetDeviceNumber>(b"VBVMR_Output_GetDeviceNumber").ok().map(|s| *s);
+            let fn_output_get_device_desc: Option<FnOutputGetDeviceDesc> =
+                lib.get::<FnOutputGetDeviceDesc>(b"VBVMR_Output_GetDeviceDescA").ok().map(|s| *s);
+
             Ok(Self {
                 fn_login: *fn_login,
                 fn_logout: *fn_logout,
@@ -73,6 +83,8 @@ impl VoicemeeterAPI {
                 fn_get_string: *fn_get_string,
                 fn_is_dirty: *fn_is_dirty,
                 fn_get_level: *fn_get_level,
+                fn_output_get_device_number,
+                fn_output_get_device_desc,
                 _lib: lib,
                 logged_in: false,
             })
@@ -170,6 +182,39 @@ impl VoicemeeterAPI {
         } else {
             // -1 or -2 means no data available yet — return silence
             Ok(0.0)
+        }
+    }
+
+    /// Returns the number of available output devices, or 0 if unsupported.
+    pub fn output_device_count(&self) -> i32 {
+        match self.fn_output_get_device_number {
+            Some(f) => unsafe { f() as i32 },
+            None => 0,
+        }
+    }
+
+    /// Returns (driver_type, device_name) for the given output device index.
+    /// driver_type: 1=MME, 3=WDM, 4=KS, 5=ASIO
+    pub fn output_device_desc(&self, index: i32) -> Result<(i32, String), String> {
+        let f = self.fn_output_get_device_desc
+            .ok_or("Device enumeration not available")?;
+        let mut dev_type: c_long = 0;
+        let mut name_buf = [0u8; 512];
+        let mut hwid_buf = [0u8; 512];
+        let rc = unsafe {
+            f(
+                index as c_long,
+                &mut dev_type,
+                name_buf.as_mut_ptr() as *mut c_char,
+                hwid_buf.as_mut_ptr() as *mut c_char,
+            )
+        };
+        if rc == 0 {
+            let end = name_buf.iter().position(|&b| b == 0).unwrap_or(name_buf.len());
+            let name = String::from_utf8(name_buf[..end].to_vec()).map_err(|e| e.to_string())?;
+            Ok((dev_type as i32, name))
+        } else {
+            Err(format!("Output_GetDeviceDescA({index}) failed: {rc}"))
         }
     }
 

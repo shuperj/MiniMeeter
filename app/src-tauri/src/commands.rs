@@ -1,6 +1,7 @@
 use crate::accent::{get_system_accent_color, AccentColor};
 use crate::voicemeeter::VoicemeeterAPI;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -11,6 +12,17 @@ use crate::WindowState;
 pub struct VmState {
     pub api: Mutex<Option<VoicemeeterAPI>>,
     pub polling: Arc<AtomicBool>,
+}
+
+/// Maps normalized shortcut strings to Voicemeeter strip indices.
+pub struct ShortcutMap {
+    pub map: Mutex<HashMap<String, u32>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MuteShortcutConfig {
+    pub strip: u32,
+    pub hotkey: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -40,6 +52,7 @@ pub struct AllStripLevels {
 pub struct BusLevel {
     pub bus: u32,
     pub level: f32,
+    pub gain: f32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -69,7 +82,8 @@ fn read_bus_level(api: &VoicemeeterAPI, bus: u32) -> BusLevel {
     let base = (bus * 8) as i32;
     let level_l = api.get_level(3, base).unwrap_or(0.0);
     let level_r = api.get_level(3, base + 1).unwrap_or(0.0);
-    BusLevel { bus, level: level_l.max(level_r) }
+    let gain = api.get_float(&format!("Bus[{bus}].Gain")).unwrap_or(0.0);
+    BusLevel { bus, level: level_l.max(level_r), gain }
 }
 
 fn read_strip_level(api: &VoicemeeterAPI, strip: u32) -> StripLevel {
@@ -208,6 +222,56 @@ pub fn vm_set_a1_device(
     rc
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct A1DeviceInfo {
+    pub driver: String,
+    pub name: String,
+    pub display: String,
+}
+
+fn driver_type_to_string(t: i32) -> &'static str {
+    match t {
+        1 => "mme",
+        3 => "wdm",
+        4 => "ks",
+        5 => "asio",
+        _ => "wdm",
+    }
+}
+
+#[tauri::command]
+pub fn vm_get_a1_device(state: State<VmState>) -> Result<Option<A1DeviceInfo>, String> {
+    let guard = state.api.lock().map_err(|e| e.to_string())?;
+    let api = guard.as_ref().ok_or("Not connected")?;
+
+    let device_name = api.get_string("Bus[0].Device.name").unwrap_or_default();
+    if device_name.is_empty() {
+        return Ok(None);
+    }
+
+    // Try to find driver type by enumerating output devices
+    let count = api.output_device_count();
+    for i in 0..count {
+        if let Ok((dev_type, name)) = api.output_device_desc(i) {
+            if name == device_name {
+                let driver = driver_type_to_string(dev_type);
+                return Ok(Some(A1DeviceInfo {
+                    display: format!("{}: {}", driver.to_uppercase(), name),
+                    driver: driver.to_string(),
+                    name,
+                }));
+            }
+        }
+    }
+
+    // Device found but couldn't match via enumeration — default to WDM
+    Ok(Some(A1DeviceInfo {
+        display: format!("WDM: {}", device_name),
+        driver: "wdm".to_string(),
+        name: device_name,
+    }))
+}
+
 #[tauri::command]
 pub fn vm_restart_engine(state: State<VmState>) -> Result<(), String> {
     let guard = state.api.lock().map_err(|e| e.to_string())?;
@@ -233,5 +297,46 @@ pub fn set_acrylic(window_state: State<WindowState>, enabled: bool) -> Result<()
             apply_acrylic(window, Some((10, 10, 10, 255))).map_err(|e| e.to_string())?;
         }
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn vm_sync_shortcuts(
+    app: AppHandle,
+    shortcut_map: State<ShortcutMap>,
+    configs: Vec<MuteShortcutConfig>,
+) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+    let manager = app.global_shortcut();
+
+    // Unregister all existing shortcuts
+    manager.unregister_all().map_err(|e| format!("{e:?}"))?;
+
+    let mut map = shortcut_map.map.lock().map_err(|e| e.to_string())?;
+    map.clear();
+
+    for config in configs {
+        if config.hotkey.is_empty() {
+            continue;
+        }
+        match config.hotkey.parse::<tauri_plugin_global_shortcut::Shortcut>() {
+            Ok(shortcut) => {
+                let normalized = shortcut.to_string();
+                match manager.register(shortcut) {
+                    Ok(_) => {
+                        map.insert(normalized, config.strip);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to register shortcut '{}': {e:?}", config.hotkey);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to parse shortcut '{}': {e:?}", config.hotkey);
+            }
+        }
+    }
+
     Ok(())
 }

@@ -12,6 +12,7 @@ export function useChannelConfig() {
   const [outputs, setOutputs] = useState<A1Device[]>(DEFAULT_A1_CHOICES);
   const [meterDecay, setMeterDecay] = useState(DEFAULT_METER_DECAY);
   const [loaded, setLoaded] = useState(false);
+  const [needsOutputSetup, setNeedsOutputSetup] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,6 +26,9 @@ export function useChannelConfig() {
         }
         if (!cancelled && savedOut && savedOut.length > 0) {
           setOutputs(savedOut);
+        } else if (!cancelled && savedOut == null) {
+          // Key doesn't exist in store — first run, trigger auto-detect
+          setNeedsOutputSetup(true);
         }
         const savedDecay = await store.get<number>(METER_DECAY_KEY);
         if (!cancelled && savedDecay != null) {
@@ -32,6 +36,7 @@ export function useChannelConfig() {
         }
       } catch {
         // First run or corrupt store — use defaults
+        if (!cancelled) setNeedsOutputSetup(true);
       }
       if (!cancelled) setLoaded(true);
     })();
@@ -68,5 +73,5 @@ export function useChannelConfig() {
     }
   }, []);
 
-  return { channels, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded };
+  return { channels, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded, needsOutputSetup, setNeedsOutputSetup };
 }

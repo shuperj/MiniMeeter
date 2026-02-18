@@ -1,4 +1,3 @@
-import { useRef, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { A1Device } from "../config";
 import { invoke } from "@tauri-apps/api/core";
@@ -8,11 +7,17 @@ interface TitlebarProps {
   a1Choices: A1Device[];
   onA1Change: (index: number) => void;
   onSettingsClick: () => void;
-  busLevel: number;
+  busGain: number;
   showOutputLevel: boolean;
 }
 
-export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, busLevel, showOutputLevel }: TitlebarProps) {
+function formatDb(v: number): string {
+  const rounded = Math.round(v);
+  const sign = rounded >= 0 ? "+" : "-";
+  return `${sign}${String(Math.abs(rounded)).padStart(2, "0")}dB`;
+}
+
+export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, busGain, showOutputLevel }: TitlebarProps) {
   const appWindow = getCurrentWindow();
 
   const handleA1Change = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -25,54 +30,6 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       // Will be apparent if audio doesn't switch
     }
   };
-
-  // --- Smoothed output level meter ---
-  const meterRef = useRef<HTMLDivElement>(null);
-  const targetLevel = useRef(0);
-  const displayLevel = useRef(0);
-  const lastSignalTime = useRef(0);
-  const rafRef = useRef<number>(0);
-
-  useEffect(() => {
-    targetLevel.current = busLevel;
-  }, [busLevel]);
-
-  useEffect(() => {
-    if (!showOutputLevel) return;
-
-    let lastTime = performance.now();
-    const SIGNAL_THRESHOLD = 0.005;
-    const HOLD_MS = 150;
-    const ATTACK_SPEED = 16;
-    const RELEASE_SPEED = 12;
-    const DECAY_SPEED = 0.4;
-
-    const animate = (now: number) => {
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-
-      const target = targetLevel.current;
-      const current = displayLevel.current;
-
-      if (target > SIGNAL_THRESHOLD) {
-        lastSignalTime.current = now;
-        const speed = target >= current ? ATTACK_SPEED : RELEASE_SPEED;
-        const factor = 1 - Math.exp(-speed * dt);
-        displayLevel.current = current + (target - current) * factor;
-      } else if (now - lastSignalTime.current > HOLD_MS) {
-        displayLevel.current = Math.max(0, current - DECAY_SPEED * dt);
-      }
-
-      if (meterRef.current) {
-        meterRef.current.style.width = `${Math.min(displayLevel.current * 100, 100)}%`;
-      }
-
-      rafRef.current = requestAnimationFrame(animate);
-    };
-
-    rafRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [showOutputLevel]);
 
   return (
     <div
@@ -100,21 +57,6 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
         </svg>
       </button>
 
-      {/* A1 output level meter — to the left of the title */}
-      {showOutputLevel && (
-        <div
-          className="relative h-[clamp(4px,1.2dvh,6px)] w-[clamp(30px,8vw,50px)] rounded-full overflow-hidden mr-[clamp(3px,0.8vw,6px)] shrink-0 hidden min-[260px]:block"
-          style={{ backgroundColor: "var(--accent-fg)", opacity: 0.2 }}
-          title="A1 output level"
-        >
-          <div
-            ref={meterRef}
-            className="absolute inset-y-0 left-0 rounded-full"
-            style={{ width: "0%", backgroundColor: "var(--accent-fg)", opacity: 1 }}
-          />
-        </div>
-      )}
-
       {/* App title — hides at very small widths */}
       <span
         className="text-[clamp(0.55rem,2.2vw,0.75rem)] font-bold mr-auto truncate hidden min-[260px]:block"
@@ -124,8 +66,19 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
         MiniMeeter
       </span>
 
+      {/* A1 output gain readout */}
+      {showOutputLevel && (
+        <span
+          className="text-[clamp(0.5rem,1.6vw,0.65rem)] font-bold tabular-nums whitespace-nowrap mr-[clamp(3px,0.8vw,6px)] hidden min-[260px]:block"
+          style={{ color: "var(--accent-fg)", opacity: 0.8 }}
+          title="A1 output gain"
+        >
+          {formatDb(busGain)}
+        </span>
+      )}
+
       {/* A1 picker */}
-      <div className="flex items-center gap-[clamp(2px,0.5vw,4px)] ml-auto mr-[clamp(4px,1vw,8px)]">
+      <div className="flex items-center gap-[clamp(2px,0.5vw,4px)] mr-[clamp(4px,1vw,8px)]">
         <span
           className="text-[clamp(0.5rem,1.8vw,0.65rem)] font-bold hidden min-[240px]:block"
           style={{ color: "var(--accent-fg)" }}

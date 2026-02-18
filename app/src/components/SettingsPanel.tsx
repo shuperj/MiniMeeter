@@ -61,7 +61,7 @@ export default function SettingsPanel({
   onPreviewStyle,
   onClose,
 }: SettingsPanelProps) {
-  const [tab, setTab] = useState<Tab>("channels");
+  const [tab, setTab] = useState<Tab>("style");
   const [chDraft, setChDraft] = useState<ChannelConfig[]>([]);
   const [outDraft, setOutDraft] = useState<A1Device[]>([]);
   const [decayDraft, setDecayDraft] = useState(0.3);
@@ -225,7 +225,7 @@ export default function SettingsPanel({
 
             {/* Tabs */}
             <div className="flex gap-1 shrink-0">
-              {(["channels", "outputs", "style"] as Tab[]).map((t) => (
+              {(["style", "channels", "outputs"] as Tab[]).map((t) => (
                 <button
                   key={t}
                   className={`px-[clamp(6px,1.5vw,12px)] py-[clamp(2px,0.5dvh,4px)] rounded-[3px] border-none cursor-pointer ${medText} font-semibold capitalize`}
@@ -244,24 +244,6 @@ export default function SettingsPanel({
             <div className="flex-1 overflow-y-auto flex flex-col gap-[clamp(4px,1dvh,8px)] min-h-0">
               {tab === "channels" && (
                 <>
-                  {/* Global meter decay setting */}
-                  <div className="flex items-center gap-[clamp(4px,1vw,8px)] bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)]">
-                    <span className={`${smallText} text-white/60 whitespace-nowrap`}>Meter decay</span>
-                    <input
-                      type="range"
-                      min="0.05"
-                      max="2"
-                      step="0.05"
-                      value={decayDraft}
-                      onChange={(e) => setDecayDraft(Number(e.target.value))}
-                      onDoubleClick={() => setDecayDraft(0.3)}
-                      className="flex-1 min-w-[clamp(40px,10vw,80px)] accent-[var(--accent)] cursor-pointer"
-                    />
-                    <span className={`${smallText} text-white/60 tabular-nums w-[4ch] text-right`}>
-                      {decayDraft < 0.15 ? "Slow" : decayDraft > 1.5 ? "Fast" : decayDraft.toFixed(2)}
-                    </span>
-                  </div>
-
                   {chDraft.map((ch, idx) => (
                     <div
                       key={idx}
@@ -403,6 +385,8 @@ export default function SettingsPanel({
                 <StyleTab
                   draft={styleDraft}
                   onChange={setStyleDraft}
+                  meterDecay={decayDraft}
+                  onMeterDecayChange={setDecayDraft}
                   smallText={smallText}
                   medText={medText}
                   inputCls={inputCls}
