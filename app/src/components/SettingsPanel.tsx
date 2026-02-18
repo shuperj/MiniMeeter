@@ -68,7 +68,6 @@ export default function SettingsPanel({
   const [decayDraft, setDecayDraft] = useState(0.3);
   const [styleDraft, setStyleDraft] = useState<StyleSettings>(DEFAULT_STYLE_SETTINGS);
 
-  // Hotkey recording state: index of channel currently being recorded, or null
   const [autostartEnabled, setAutostartEnabled] = useState(false);
 
   // Hotkey recording state: index of channel currently being recorded, or null
