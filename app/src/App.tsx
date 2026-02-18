@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useVoicemeeter } from "./hooks/useVoicemeeter";
 import { useAccentColor } from "./hooks/useAccentColor";
 import { useChannelConfig } from "./hooks/useChannelConfig";
 import { useStyleSettings } from "./hooks/useStyleSettings";
 import { useWindowFocus } from "./hooks/useWindowFocus";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import type { StyleSettings } from "./types/style";
 import Titlebar from "./components/Titlebar";
 import Fader from "./components/Fader";
@@ -78,10 +79,21 @@ export default function App() {
   }, [bgProps.isAcrylic, focused, styleLoaded]);
 
   const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded } = useChannelConfig();
-  const { connected, error, channels, levels, setGain, setMute, startDragging, stopDragging } =
+  const { connected, error, channels, levels, busLevels, setGain, setMute, startDragging, stopDragging } =
     useVoicemeeter(channelConfigs);
   const [selectedA1, setSelectedA1] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Global hotkey → toggle mute for the given strip
+  const channelsRef = useRef(channels);
+  useEffect(() => { channelsRef.current = channels; }, [channels]);
+
+  const toggleMute = useCallback((strip: number) => {
+    const state = channelsRef.current.get(strip);
+    if (state) setMute(strip, !state.muted);
+  }, [setMute]);
+
+  useGlobalShortcuts(channelConfigs, toggleMute);
 
   // Master level for visualizers: max of all strip levels
   const masterLevel = useMemo(() => {
@@ -120,6 +132,8 @@ export default function App() {
         a1Choices={outputs}
         onA1Change={setSelectedA1}
         onSettingsClick={() => setSettingsOpen(true)}
+        busLevel={busLevels.get(0) ?? 0}
+        showOutputLevel={effectiveSettings.showOutputLevel}
       />
 
       {/* Channel faders */}

@@ -31,6 +31,7 @@ export interface StyleSettings {
   customAccentColor: string;
   faderColumnWidth: number;
   background: BackgroundStyle;
+  showOutputLevel: boolean;
 }
 
 export const DEFAULT_BACKGROUND_STYLE: BackgroundStyle = {
@@ -50,4 +51,5 @@ export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   customAccentColor: "#3a86ff",
   faderColumnWidth: 0,
   background: { ...DEFAULT_BACKGROUND_STYLE },
+  showOutputLevel: false,
 };

@@ -91,6 +91,22 @@ export default function StyleTab({
         </div>
       </div>
 
+      {/* Output level in titlebar */}
+      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
+        <span className={`${medText} font-semibold text-white/80`}>Titlebar</span>
+        <div className={`flex items-center gap-1 ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
+          <label className="flex items-center gap-1 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={draft.showOutputLevel}
+              onChange={(e) => update({ showOutputLevel: e.target.checked })}
+              className="accent-[var(--accent)] cursor-pointer"
+            />
+            Show A1 output level
+          </label>
+        </div>
+      </div>
+
       {/* Background */}
       <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)]">
         <WindowStateStyleEditor

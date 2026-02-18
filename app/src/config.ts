@@ -7,6 +7,8 @@ export interface ChannelConfig {
   defaultDb: number;
   /** Multiplier for level meter display (default 1) */
   levelScale?: number;
+  /** Global hotkey to toggle mute (Tauri accelerator format, e.g. "CmdOrCtrl+Shift+M") */
+  muteHotkey?: string;
 }
 
 export interface A1Device {

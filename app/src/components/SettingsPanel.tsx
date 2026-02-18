@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ChannelConfig, A1Device } from "../config";
 import { STRIP_LABELS, DRIVER_OPTIONS } from "../config";
@@ -24,6 +24,30 @@ type Tab = "channels" | "outputs" | "style";
 
 const AVAILABLE_STRIPS = [0, 1, 2, 3, 4];
 
+/** Convert a KeyboardEvent into a Tauri accelerator string */
+function keyEventToAccelerator(e: KeyboardEvent): string | null {
+  // Ignore lone modifier presses
+  if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return null;
+
+  const parts: string[] = [];
+  if (e.ctrlKey || e.metaKey) parts.push("CmdOrCtrl");
+  if (e.shiftKey) parts.push("Shift");
+  if (e.altKey) parts.push("Alt");
+
+  // Map key names to Tauri accelerator names
+  let key = e.key;
+  if (key === " ") key = "Space";
+  else if (key.length === 1) key = key.toUpperCase();
+  else if (key === "ArrowUp") key = "Up";
+  else if (key === "ArrowDown") key = "Down";
+  else if (key === "ArrowLeft") key = "Left";
+  else if (key === "ArrowRight") key = "Right";
+  // F1-F24, Escape, Tab, etc. are already correct casing from e.key
+
+  parts.push(key);
+  return parts.join("+");
+}
+
 export default function SettingsPanel({
   open,
   channels,
@@ -42,6 +66,38 @@ export default function SettingsPanel({
   const [outDraft, setOutDraft] = useState<A1Device[]>([]);
   const [decayDraft, setDecayDraft] = useState(0.3);
   const [styleDraft, setStyleDraft] = useState<StyleSettings>(DEFAULT_STYLE_SETTINGS);
+
+  // Hotkey recording state: index of channel currently being recorded, or null
+  const [recordingIdx, setRecordingIdx] = useState<number | null>(null);
+  const recordingRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    recordingRef.current = recordingIdx;
+  }, [recordingIdx]);
+
+  useEffect(() => {
+    if (recordingIdx === null) return;
+
+    const handler = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Escape cancels recording
+      if (e.key === "Escape") {
+        setRecordingIdx(null);
+        return;
+      }
+
+      const accel = keyEventToAccelerator(e);
+      if (accel && recordingRef.current !== null) {
+        updateChField(recordingRef.current, "muteHotkey", accel);
+        setRecordingIdx(null);
+      }
+    };
+
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [recordingIdx]);
 
   const handleOpen = () => {
     setChDraft(channels.map((c) => ({ ...c })));
@@ -263,6 +319,29 @@ export default function SettingsPanel({
                         />
                         Mute
                       </label>
+
+                      {/* Mute hotkey */}
+                      {ch.hasMute && (
+                        <div className={`flex items-center gap-1 ${smallText} text-white/60`}>
+                          <button
+                            className={`${inputCls} ${smallText} px-[clamp(3px,0.5vw,6px)] py-[1px] cursor-pointer min-w-[clamp(50px,10vw,90px)] text-center`}
+                            style={recordingIdx === idx ? { borderColor: "var(--accent)", color: "var(--accent)" } : undefined}
+                            onClick={() => setRecordingIdx(recordingIdx === idx ? null : idx)}
+                            title="Click to record hotkey, Escape to cancel"
+                          >
+                            {recordingIdx === idx ? "Press key..." : ch.muteHotkey || "None"}
+                          </button>
+                          {ch.muteHotkey && (
+                            <button
+                              className="text-white/40 hover:text-white/70 bg-transparent border-none cursor-pointer text-[clamp(0.5rem,1.2vw,0.6rem)] p-0"
+                              onClick={() => updateChField(idx, "muteHotkey", "")}
+                              title="Clear hotkey"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {/* dB range */}
                       <div className={`flex items-center gap-1 ${smallText} text-white/60`}>

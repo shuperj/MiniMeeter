@@ -36,6 +36,17 @@ pub struct AllStripLevels {
     pub levels: Vec<StripLevel>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct BusLevel {
+    pub bus: u32,
+    pub level: f32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AllBusLevels {
+    pub levels: Vec<BusLevel>,
+}
+
 /// Monitor all 5 Banana strips — frontend decides which to display
 const MONITORED_STRIPS: &[u32] = &[0, 1, 2, 3, 4];
 
@@ -52,6 +63,13 @@ fn strip_to_channels(strip: u32) -> (i32, i32) {
         _ => 0,
     };
     (base, base + 1)
+}
+
+fn read_bus_level(api: &VoicemeeterAPI, bus: u32) -> BusLevel {
+    let base = (bus * 8) as i32;
+    let level_l = api.get_level(3, base).unwrap_or(0.0);
+    let level_r = api.get_level(3, base + 1).unwrap_or(0.0);
+    BusLevel { bus, level: level_l.max(level_r) }
 }
 
 fn read_strip_level(api: &VoicemeeterAPI, strip: u32) -> StripLevel {
@@ -119,6 +137,10 @@ pub fn vm_login(state: State<VmState>, app: AppHandle) -> Result<String, String>
                         .map(|&s| read_strip_level(api, s))
                         .collect();
                     let _ = app_handle.emit("vm:levels", AllStripLevels { levels });
+
+                    // Read output bus levels (A1 = Bus[0])
+                    let bus_levels = vec![read_bus_level(api, 0)];
+                    let _ = app_handle.emit("vm:bus-levels", AllBusLevels { levels: bus_levels });
                 }
             }
             drop(guard);

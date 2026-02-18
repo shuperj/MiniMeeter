@@ -22,6 +22,15 @@ interface AllStripLevels {
   levels: StripLevel[];
 }
 
+interface BusLevel {
+  bus: number;
+  level: number;
+}
+
+interface AllBusLevels {
+  levels: BusLevel[];
+}
+
 export interface ChannelState {
   gain: number;
   muted: boolean;
@@ -45,6 +54,8 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
     }
     return map;
   });
+
+  const [busLevels, setBusLevels] = useState<Map<number, number>>(new Map());
 
   // Track which strips are being actively dragged to avoid overwriting
   const dragging = useRef<Set<number>>(new Set());
@@ -99,10 +110,21 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
       });
     });
 
+    const unlistenBusLevels = listen<AllBusLevels>("vm:bus-levels", (event) => {
+      setBusLevels((prev) => {
+        const next = new Map(prev);
+        for (const l of event.payload.levels) {
+          next.set(l.bus, l.level);
+        }
+        return next;
+      });
+    });
+
     return () => {
       cancelled = true;
       unlisten.then((fn) => fn());
       unlistenLevels.then((fn) => fn());
+      unlistenBusLevels.then((fn) => fn());
       invoke("vm_logout").catch(() => {});
     };
   }, []);
@@ -143,5 +165,5 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
     dragging.current.delete(strip);
   }, []);
 
-  return { connected, error, channels, levels, setGain, setMute, startDragging, stopDragging };
+  return { connected, error, channels, levels, busLevels, setGain, setMute, startDragging, stopDragging };
 }
