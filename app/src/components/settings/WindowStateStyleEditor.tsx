@@ -1,34 +1,37 @@
-import type { WindowStateStyle, BackgroundMode, VisualizerPreset } from "../../types/style";
+import type { BackgroundStyle, BackgroundMode, VisualizerPreset, VisualizerColorSource, UnfocusedVisualizerMode } from "../../types/style";
 
 interface WindowStateStyleEditorProps {
   label: string;
-  draft: WindowStateStyle;
-  onChange: (next: WindowStateStyle) => void;
+  draft: BackgroundStyle;
+  onChange: (next: BackgroundStyle) => void;
   smallText: string;
   medText: string;
   inputCls: string;
-  isUnfocused?: boolean;
 }
 
-const BG_MODES_FOCUSED: { value: BackgroundMode; label: string }[] = [
+const BG_MODES: { value: BackgroundMode; label: string }[] = [
   { value: "solid", label: "Color" },
   { value: "acrylic", label: "Acrylic" },
   { value: "visualizer", label: "Visualizer" },
-];
-
-const BG_MODES_UNFOCUSED: { value: BackgroundMode; label: string }[] = [
-  { value: "solid", label: "Color" },
-  { value: "acrylic", label: "Acrylic" },
 ];
 
 const VISUALIZER_PRESETS: { value: VisualizerPreset; label: string }[] = [
   { value: "xmb-smoke", label: "XMB Smoke" },
   { value: "starfield", label: "Starfield" },
   { value: "matrix-rain", label: "Matrix Rain" },
-  { value: "plasma", label: "Plasma" },
   { value: "gradient-mesh", label: "Gradient Mesh" },
   { value: "noise-flow", label: "Noise Flow" },
   { value: "geometric-pulse", label: "Geometric Pulse" },
+];
+
+const VIZ_COLOR_SOURCES: { value: VisualizerColorSource; label: string }[] = [
+  { value: "accent", label: "Accent" },
+  { value: "custom", label: "Custom" },
+];
+
+const VIZ_UNFOCUSED: { value: UnfocusedVisualizerMode; label: string }[] = [
+  { value: "animated", label: "Animated" },
+  { value: "paused", label: "Paused" },
 ];
 
 export default function WindowStateStyleEditor({
@@ -38,18 +41,10 @@ export default function WindowStateStyleEditor({
   smallText,
   medText,
   inputCls: _inputCls,
-  isUnfocused = false,
 }: WindowStateStyleEditorProps) {
-  const update = (patch: Partial<WindowStateStyle>) => {
+  const update = (patch: Partial<BackgroundStyle>) => {
     onChange({ ...draft, ...patch });
   };
-
-  const bgModes = isUnfocused ? BG_MODES_UNFOCUSED : BG_MODES_FOCUSED;
-
-  // For unfocused, clamp backgroundMode to valid options
-  const effectiveBgMode = isUnfocused && draft.backgroundMode === "visualizer"
-    ? "solid" as BackgroundMode
-    : draft.backgroundMode;
 
   return (
     <div className="flex flex-col gap-[clamp(3px,0.8dvh,6px)]">
@@ -58,14 +53,14 @@ export default function WindowStateStyleEditor({
       <div className="flex flex-col gap-[clamp(2px,0.5dvh,4px)] pl-[clamp(6px,1.5vw,12px)]">
         {/* Background mode */}
         <div className={`flex items-center gap-[clamp(2px,0.5vw,6px)] ${smallText} text-white/60`}>
-          <span>Background:</span>
-          {bgModes.map((m) => (
+          <span>Mode:</span>
+          {BG_MODES.map((m) => (
             <button
               key={m.value}
               className={`px-[clamp(4px,0.8vw,8px)] py-[1px] rounded-[3px] border-none cursor-pointer ${smallText} font-medium`}
               style={{
-                backgroundColor: effectiveBgMode === m.value ? "var(--accent)" : "rgba(255,255,255,0.1)",
-                color: effectiveBgMode === m.value ? "var(--accent-fg)" : "rgba(255,255,255,0.7)",
+                backgroundColor: draft.backgroundMode === m.value ? "var(--accent)" : "rgba(255,255,255,0.1)",
+                color: draft.backgroundMode === m.value ? "var(--accent-fg)" : "rgba(255,255,255,0.7)",
               }}
               onClick={() => update({ backgroundMode: m.value })}
             >
@@ -75,7 +70,7 @@ export default function WindowStateStyleEditor({
         </div>
 
         {/* Solid color picker + opacity */}
-        {effectiveBgMode === "solid" && (
+        {draft.backgroundMode === "solid" && (
           <div className="flex flex-col gap-[clamp(2px,0.4dvh,4px)]">
             <div className={`flex items-center gap-1 ${smallText} text-white/60`}>
               <span>Color:</span>
@@ -105,44 +100,8 @@ export default function WindowStateStyleEditor({
           </div>
         )}
 
-        {/* Acrylic settings */}
-        {effectiveBgMode === "acrylic" && (
-          <div className="flex flex-col gap-[clamp(2px,0.4dvh,4px)]">
-            <div className={`flex items-center gap-1 ${smallText} text-white/60`}>
-              <span>Opacity:</span>
-              <input
-                type="range"
-                min="0.05"
-                max="0.95"
-                step="0.05"
-                value={draft.acrylicOpacity}
-                onChange={(e) => update({ acrylicOpacity: Number(e.target.value) })}
-                className="flex-1 accent-[var(--accent)] cursor-pointer"
-              />
-              <span className="tabular-nums w-[3ch] text-right">
-                {Math.round(draft.acrylicOpacity * 100)}%
-              </span>
-            </div>
-            <div className={`flex items-center gap-1 ${smallText} text-white/60`}>
-              <span>Blur:</span>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={draft.acrylicBlur}
-                onChange={(e) => update({ acrylicBlur: Number(e.target.value) })}
-                className="flex-1 accent-[var(--accent)] cursor-pointer"
-              />
-              <span className="tabular-nums w-[3ch] text-right">
-                {Math.round(draft.acrylicBlur * 100)}%
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Visualizer settings (focused only) */}
-        {!isUnfocused && effectiveBgMode === "visualizer" && (
+        {/* Visualizer settings */}
+        {draft.backgroundMode === "visualizer" && (
           <div className="flex flex-col gap-[clamp(2px,0.4dvh,4px)]">
             <div className={`flex items-center gap-1 ${smallText} text-white/60`}>
               <span>Preset:</span>
@@ -186,6 +145,49 @@ export default function WindowStateStyleEditor({
               <span className="tabular-nums w-[3ch] text-right">
                 {Math.round(draft.visualizerIntensity * 100)}%
               </span>
+            </div>
+            <div className={`flex items-center gap-[clamp(2px,0.5vw,6px)] ${smallText} text-white/60`}>
+              <span>Color:</span>
+              {VIZ_COLOR_SOURCES.map((s) => (
+                <button
+                  key={s.value}
+                  className={`px-[clamp(4px,0.8vw,8px)] py-[1px] rounded-[3px] border-none cursor-pointer ${smallText} font-medium`}
+                  style={{
+                    backgroundColor: draft.visualizerColorSource === s.value ? "var(--accent)" : "rgba(255,255,255,0.1)",
+                    color: draft.visualizerColorSource === s.value ? "var(--accent-fg)" : "rgba(255,255,255,0.7)",
+                  }}
+                  onClick={() => update({ visualizerColorSource: s.value })}
+                >
+                  {s.label}
+                </button>
+              ))}
+              {draft.visualizerColorSource === "custom" && (
+                <>
+                  <input
+                    type="color"
+                    value={draft.visualizerColor}
+                    onChange={(e) => update({ visualizerColor: e.target.value })}
+                    className="w-[clamp(20px,4vw,28px)] h-[clamp(16px,3vw,22px)] border border-white/20 rounded-[2px] cursor-pointer bg-transparent p-0"
+                  />
+                  <span className="tabular-nums">{draft.visualizerColor}</span>
+                </>
+              )}
+            </div>
+            <div className={`flex items-center gap-[clamp(2px,0.5vw,6px)] ${smallText} text-white/60`}>
+              <span>Unfocused:</span>
+              {VIZ_UNFOCUSED.map((b) => (
+                <button
+                  key={b.value}
+                  className={`px-[clamp(4px,0.8vw,8px)] py-[1px] rounded-[3px] border-none cursor-pointer ${smallText} font-medium`}
+                  style={{
+                    backgroundColor: draft.unfocusedVisualizerMode === b.value ? "var(--accent)" : "rgba(255,255,255,0.1)",
+                    color: draft.unfocusedVisualizerMode === b.value ? "var(--accent-fg)" : "rgba(255,255,255,0.7)",
+                  }}
+                  onClick={() => update({ unfocusedVisualizerMode: b.value })}
+                >
+                  {b.label}
+                </button>
+              ))}
             </div>
           </div>
         )}

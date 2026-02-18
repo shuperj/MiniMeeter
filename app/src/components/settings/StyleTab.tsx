@@ -1,5 +1,4 @@
-import { useState } from "react";
-import type { StyleSettings, UnfocusedVisualizerMode } from "../../types/style";
+import type { StyleSettings } from "../../types/style";
 import { DEFAULT_STYLE_SETTINGS } from "../../types/style";
 import WindowStateStyleEditor from "./WindowStateStyleEditor";
 
@@ -11,12 +10,6 @@ interface StyleTabProps {
   inputCls: string;
 }
 
-const VIZ_BEHAVIORS: { value: UnfocusedVisualizerMode; label: string }[] = [
-  { value: "animated", label: "Animated" },
-  { value: "paused", label: "Paused" },
-  { value: "off", label: "Off" },
-];
-
 export default function StyleTab({
   draft,
   onChange,
@@ -26,27 +19,6 @@ export default function StyleTab({
 }: StyleTabProps) {
   const update = (patch: Partial<StyleSettings>) => {
     onChange({ ...draft, ...patch });
-  };
-
-  // Track whether unfocused should mirror focused
-  const [sameAsFocused, setSameAsFocused] = useState(
-    () => JSON.stringify(draft.unfocused) === JSON.stringify(draft.focused),
-  );
-
-  const handleFocusedChange = (focused: StyleSettings["focused"]) => {
-    if (sameAsFocused) {
-      update({ focused, unfocused: { ...focused } });
-    } else {
-      update({ focused });
-    }
-  };
-
-  const handleToggleSame = () => {
-    if (!sameAsFocused) {
-      // Turning ON — sync unfocused to focused
-      update({ unfocused: { ...draft.focused } });
-    }
-    setSameAsFocused(!sameAsFocused);
   };
 
   return (
@@ -119,91 +91,22 @@ export default function StyleTab({
         </div>
       </div>
 
-      {/* Focused style */}
+      {/* Background */}
       <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)]">
         <WindowStateStyleEditor
-          label="Focused"
-          draft={draft.focused}
-          onChange={handleFocusedChange}
+          label="Background"
+          draft={draft.background}
+          onChange={(background) => update({ background })}
           smallText={smallText}
           medText={medText}
           inputCls={inputCls}
         />
       </div>
 
-      {/* Unfocused style */}
-      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
-        <div className="flex items-center gap-[clamp(6px,1.2vw,12px)]">
-          <span className={`${medText} font-semibold text-white/80`}>Unfocused</span>
-          {/* Toggle switch */}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={sameAsFocused}
-            onClick={handleToggleSame}
-            className="relative inline-flex items-center shrink-0 cursor-pointer rounded-full transition-colors duration-200"
-            style={{
-              width: "clamp(28px,5vw,36px)",
-              height: "clamp(14px,2.5vw,18px)",
-              backgroundColor: sameAsFocused ? "var(--accent)" : "rgba(255,255,255,0.2)",
-            }}
-          >
-            <span
-              className="inline-block rounded-full bg-white shadow transition-transform duration-200"
-              style={{
-                width: "clamp(10px,2vw,14px)",
-                height: "clamp(10px,2vw,14px)",
-                marginLeft: "2px",
-                transform: sameAsFocused ? "translateX(clamp(12px,2.5vw,16px))" : "translateX(0)",
-              }}
-            />
-          </button>
-          <span className={`${smallText} text-white/50 select-none`}>
-            Same as focused
-          </span>
-        </div>
-        {!sameAsFocused && (
-          <div className="flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
-            <WindowStateStyleEditor
-              label=""
-              draft={draft.unfocused}
-              onChange={(unfocused) => update({ unfocused })}
-              smallText={smallText}
-              medText={medText}
-              inputCls={inputCls}
-              isUnfocused
-            />
-
-            {/* Unfocused visualizer behavior — only shown when focused uses visualizer */}
-            {draft.focused.backgroundMode === "visualizer" && (
-              <div className={`flex items-center gap-[clamp(2px,0.5vw,6px)] ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
-                <span>Visualizer:</span>
-                {VIZ_BEHAVIORS.map((b) => (
-                  <button
-                    key={b.value}
-                    className={`px-[clamp(4px,0.8vw,8px)] py-[1px] rounded-[3px] border-none cursor-pointer ${smallText} font-medium`}
-                    style={{
-                      backgroundColor: draft.unfocusedVisualizerMode === b.value ? "var(--accent)" : "rgba(255,255,255,0.1)",
-                      color: draft.unfocusedVisualizerMode === b.value ? "var(--accent-fg)" : "rgba(255,255,255,0.7)",
-                    }}
-                    onClick={() => update({ unfocusedVisualizerMode: b.value })}
-                  >
-                    {b.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
       {/* Reset */}
       <button
         className={`${smallText} text-white/40 hover:text-white/70 bg-transparent border border-white/10 hover:border-white/20 rounded-[3px] py-[clamp(2px,0.4dvh,4px)] cursor-pointer`}
-        onClick={() => {
-          setSameAsFocused(true);
-          onChange({ ...DEFAULT_STYLE_SETTINGS });
-        }}
+        onClick={() => onChange({ ...DEFAULT_STYLE_SETTINGS })}
       >
         Reset to defaults
       </button>

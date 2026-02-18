@@ -2,7 +2,6 @@ import type { VisualizerPreset } from "../types/style";
 import XmbSmokeVisualizer from "./visualizers/XmbSmokeVisualizer";
 import StarfieldVisualizer from "./visualizers/StarfieldVisualizer";
 import MatrixRainVisualizer from "./visualizers/MatrixRainVisualizer";
-import PlasmaVisualizer from "./visualizers/PlasmaVisualizer";
 import GradientMeshVisualizer from "./visualizers/GradientMeshVisualizer";
 import NoiseFlowVisualizer from "./visualizers/NoiseFlowVisualizer";
 import GeometricPulseVisualizer from "./visualizers/GeometricPulseVisualizer";
@@ -74,8 +73,6 @@ function VisualizerSwitch({
       return <StarfieldVisualizer {...props} />;
     case "matrix-rain":
       return <MatrixRainVisualizer {...props} />;
-    case "plasma":
-      return <PlasmaVisualizer {...props} />;
     case "gradient-mesh":
       return <GradientMeshVisualizer {...props} />;
     case "noise-flow":

@@ -18,82 +18,64 @@ export default function App() {
   // Live preview style when settings panel is open
   const [previewStyle, setPreviewStyle] = useState<StyleSettings | null>(null);
   const effectiveSettings = previewStyle ?? style;
-  const effectiveStyle = focused
-    ? effectiveSettings.focused
-    : effectiveSettings.unfocused;
+  const bg = effectiveSettings.background;
 
   useAccentColor(
     effectiveSettings.accentSource,
     effectiveSettings.customAccentColor,
   );
 
-  // Determine if styles are the same (same-as-focused mode)
-  const sameStyles = useMemo(
-    () => JSON.stringify(effectiveSettings.focused) === JSON.stringify(effectiveSettings.unfocused),
-    [effectiveSettings.focused, effectiveSettings.unfocused],
-  );
-
-  // Compute background layer props
-  const bgProps = useMemo(() => {
-    const isAcrylic = effectiveStyle.backgroundMode === "acrylic";
-    const isFocusedOrSame = focused || sameStyles;
-
-    if (isFocusedOrSame) {
-      // Focused or same-as-focused: use effectiveStyle directly
-      return {
-        isAcrylic,
-        acrylicOpacity: effectiveStyle.acrylicOpacity,
-        acrylicBlur: effectiveStyle.acrylicBlur,
-        showColor: effectiveStyle.backgroundMode === "solid",
-        color: effectiveStyle.backgroundColor,
-        colorOpacity: effectiveStyle.backgroundOpacity,
-        showVisualizer: effectiveStyle.backgroundMode === "visualizer",
-        visualizerPaused: false,
-        visualizerPreset: effectiveStyle.visualizerPreset,
-        visualizerOpacity: effectiveStyle.visualizerOpacity,
-        visualizerIntensity: effectiveStyle.visualizerIntensity,
-      };
+  // Visualizer color: either follows accent or uses a custom color
+  useEffect(() => {
+    const root = document.documentElement;
+    if (bg.visualizerColorSource === "custom") {
+      const h = bg.visualizerColor.replace("#", "");
+      root.style.setProperty("--viz-r", String(parseInt(h.substring(0, 2), 16) || 0));
+      root.style.setProperty("--viz-g", String(parseInt(h.substring(2, 4), 16) || 0));
+      root.style.setProperty("--viz-b", String(parseInt(h.substring(4, 6), 16) || 0));
+    } else {
+      root.style.setProperty("--viz-r", getComputedStyle(root).getPropertyValue("--accent-r"));
+      root.style.setProperty("--viz-g", getComputedStyle(root).getPropertyValue("--accent-g"));
+      root.style.setProperty("--viz-b", getComputedStyle(root).getPropertyValue("--accent-b"));
     }
+  }, [bg.visualizerColorSource, bg.visualizerColor, effectiveSettings.accentSource, effectiveSettings.customAccentColor]);
 
-    // Unfocused with different settings
-    // Only allow visualizer carry-over if focused mode is actually "visualizer"
-    const vizMode = effectiveSettings.unfocusedVisualizerMode;
-    const focusedUsesViz = effectiveSettings.focused.backgroundMode === "visualizer";
-    const showVisualizer = focusedUsesViz && vizMode !== "off";
+  // Compute background layer props — focus only affects visualizer pause
+  const bgProps = useMemo(() => {
+    const isAcrylic = bg.backgroundMode === "acrylic";
+    const vizPaused = !focused && bg.unfocusedVisualizerMode === "paused";
 
     return {
       isAcrylic,
-      acrylicOpacity: effectiveStyle.acrylicOpacity,
-      acrylicBlur: effectiveStyle.acrylicBlur,
-      showColor: effectiveStyle.backgroundMode === "solid",
-      color: effectiveStyle.backgroundColor,
-      colorOpacity: effectiveStyle.backgroundOpacity,
-      showVisualizer,
-      visualizerPaused: vizMode === "paused",
-      // Use focused preset/opacity/intensity for unfocused visualizer
-      visualizerPreset: effectiveSettings.focused.visualizerPreset,
-      visualizerOpacity: effectiveSettings.focused.visualizerOpacity,
-      visualizerIntensity: effectiveSettings.focused.visualizerIntensity,
+      showColor: bg.backgroundMode === "solid",
+      color: bg.backgroundColor,
+      colorOpacity: bg.backgroundOpacity,
+      showVisualizer: bg.backgroundMode === "visualizer",
+      visualizerPaused: vizPaused,
+      visualizerPreset: bg.visualizerPreset,
+      visualizerOpacity: bg.visualizerOpacity,
+      visualizerIntensity: bg.visualizerIntensity,
     };
-  }, [effectiveStyle, effectiveSettings, focused, sameStyles]);
+  }, [bg, focused]);
 
-  // Toggle acrylic on focus / style changes, passing tint alpha from blur slider
+  // Acrylic + CSS overlay, synced to focus state.
+  // Windows DWM forces acrylic opaque when unfocused, so we clear it and
+  // fall back to a CSS-only translucent overlay that preserves the look.
   useEffect(() => {
     if (!styleLoaded) return;
-    // Map blur 0-1 to tint alpha: high blur → low tint alpha (more transparent tint, more blur visible)
-    const tintAlpha = bgProps.isAcrylic
-      ? Math.round(255 * (1 - bgProps.acrylicBlur * 0.85))
-      : undefined;
-    invoke("set_acrylic", { enabled: bgProps.isAcrylic, tintAlpha }).catch(() => {});
-  }, [bgProps.isAcrylic, bgProps.acrylicBlur, styleLoaded]);
-
-  // Set glass overlay opacity based on acrylic state
-  useEffect(() => {
-    document.documentElement.style.setProperty(
-      "--glass-opacity",
-      bgProps.isAcrylic ? String(bgProps.acrylicOpacity) : "0.85",
-    );
-  }, [bgProps.isAcrylic, bgProps.acrylicOpacity]);
+    if (bgProps.isAcrylic) {
+      if (focused) {
+        invoke("set_acrylic", { enabled: true }).catch(() => {});
+        document.documentElement.style.setProperty("--glass-opacity", "0.45");
+      } else {
+        document.documentElement.style.setProperty("--glass-opacity", "0.85");
+        invoke("set_acrylic", { enabled: false }).catch(() => {});
+      }
+    } else {
+      invoke("set_acrylic", { enabled: false }).catch(() => {});
+      document.documentElement.style.setProperty("--glass-opacity", "0.85");
+    }
+  }, [bgProps.isAcrylic, focused, styleLoaded]);
 
   const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded } = useChannelConfig();
   const { connected, error, channels, levels, setGain, setMute, startDragging, stopDragging } =

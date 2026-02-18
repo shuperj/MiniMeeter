@@ -1,45 +1,70 @@
 import { useState, useEffect, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
-import type { StyleSettings, WindowStateStyle } from "../types/style";
-import { DEFAULT_STYLE_SETTINGS, DEFAULT_WINDOW_STATE_STYLE } from "../types/style";
+import type { StyleSettings, BackgroundStyle } from "../types/style";
+import { DEFAULT_STYLE_SETTINGS, DEFAULT_BACKGROUND_STYLE } from "../types/style";
 
 const STYLE_KEY = "style";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-/** Migrate a WindowStateStyle from the old schema (acrylic boolean) to the new one */
-function migrateWindowState(raw: any): WindowStateStyle {
-  const ws = { ...DEFAULT_WINDOW_STATE_STYLE, ...raw };
+/** Migrate a background style from any older schema */
+function migrateBackground(raw: any): BackgroundStyle {
+  const bg = { ...DEFAULT_BACKGROUND_STYLE, ...raw };
 
   // Migrate old acrylic boolean → backgroundMode
   if ("acrylic" in raw) {
-    if (raw.acrylic && ws.backgroundMode !== "visualizer") {
-      ws.backgroundMode = "acrylic";
+    if (raw.acrylic && bg.backgroundMode !== "visualizer") {
+      bg.backgroundMode = "acrylic";
     }
-    delete ws.acrylic;
+    delete bg.acrylic;
   }
+
+  // Drop removed fields
+  delete bg.acrylicBlur;
+  delete bg.acrylicOpacity;
+  delete bg.acrylicTintR;
+  delete bg.acrylicTintG;
+  delete bg.acrylicTintB;
+  delete bg.acrylicTintAlpha;
+  delete bg.cssOverlayOpacity;
 
   // Ensure backgroundOpacity has a default
-  if (ws.backgroundOpacity === undefined) {
-    ws.backgroundOpacity = 1;
+  if (bg.backgroundOpacity === undefined) {
+    bg.backgroundOpacity = 1;
   }
 
-  return ws;
+  // Migrate unfocusedVisualizerMode "off" → "paused"
+  if (bg.unfocusedVisualizerMode === "off") {
+    bg.unfocusedVisualizerMode = "paused";
+  }
+
+  // Migrate removed visualizer presets → default
+  if (bg.visualizerPreset === "plasma") {
+    bg.visualizerPreset = "xmb-smoke";
+  }
+
+  return bg;
 }
 
 /** Migrate full StyleSettings from any saved version to the current schema */
 function migrateSettings(raw: any): StyleSettings {
   const s = { ...DEFAULT_STYLE_SETTINGS, ...raw };
 
-  if (raw.focused) {
-    s.focused = migrateWindowState(raw.focused);
+  // Migrate from old focused/unfocused schema → single background
+  if (raw.focused && !raw.background) {
+    s.background = migrateBackground(raw.focused);
+    // Pull unfocusedVisualizerMode from old top-level field
+    if (raw.unfocusedVisualizerMode && raw.unfocusedVisualizerMode !== "off") {
+      s.background.unfocusedVisualizerMode = raw.unfocusedVisualizerMode;
+    }
+  } else if (raw.background) {
+    s.background = migrateBackground(raw.background);
   }
-  if (raw.unfocused) {
-    s.unfocused = migrateWindowState(raw.unfocused);
-  }
-  if (s.unfocusedVisualizerMode === undefined) {
-    s.unfocusedVisualizerMode = "off";
-  }
+
+  // Clean up old fields
+  delete s.focused;
+  delete s.unfocused;
+  delete s.unfocusedVisualizerMode;
 
   return s;
 }

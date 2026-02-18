@@ -199,18 +199,16 @@ pub fn get_accent_color() -> AccentColor {
 }
 
 #[tauri::command]
-pub fn set_acrylic(window_state: State<WindowState>, enabled: bool, tint_alpha: Option<u8>) -> Result<(), String> {
+pub fn set_acrylic(window_state: State<WindowState>, enabled: bool) -> Result<(), String> {
     let guard = window_state.window.lock().map_err(|e| e.to_string())?;
     let window = guard.as_ref().ok_or("No window")?;
 
     #[cfg(target_os = "windows")]
     {
         use window_vibrancy::{apply_acrylic, clear_acrylic};
+        let _ = clear_acrylic(window);
         if enabled {
-            let alpha = tint_alpha.unwrap_or(200);
-            apply_acrylic(window, Some((30, 30, 30, alpha))).map_err(|e| e.to_string())?;
-        } else {
-            clear_acrylic(window).map_err(|e| e.to_string())?;
+            apply_acrylic(window, Some((10, 10, 10, 255))).map_err(|e| e.to_string())?;
         }
     }
     Ok(())

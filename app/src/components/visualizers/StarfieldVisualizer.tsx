@@ -72,11 +72,11 @@ export default function StarfieldVisualizer({
       ctx.fillRect(0, 0, w, h);
 
       const accentR = getComputedStyle(document.documentElement)
-        .getPropertyValue("--accent-r").trim() || "58";
+        .getPropertyValue("--viz-r").trim() || "58";
       const accentG = getComputedStyle(document.documentElement)
-        .getPropertyValue("--accent-g").trim() || "134";
+        .getPropertyValue("--viz-g").trim() || "134";
       const accentB = getComputedStyle(document.documentElement)
-        .getPropertyValue("--accent-b").trim() || "255";
+        .getPropertyValue("--viz-b").trim() || "255";
 
       for (const star of stars) {
         star.z -= speed;

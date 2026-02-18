@@ -76,11 +76,11 @@ export default function XmbSmokeVisualizer({
 
         // Gradient from accent color to transparent
         const accentR = getComputedStyle(document.documentElement)
-          .getPropertyValue("--accent-r").trim() || "58";
+          .getPropertyValue("--viz-r").trim() || "58";
         const accentG = getComputedStyle(document.documentElement)
-          .getPropertyValue("--accent-g").trim() || "134";
+          .getPropertyValue("--viz-g").trim() || "134";
         const accentB = getComputedStyle(document.documentElement)
-          .getPropertyValue("--accent-b").trim() || "255";
+          .getPropertyValue("--viz-b").trim() || "255";
 
         const gradient = ctx.createLinearGradient(0, baseY - amp, 0, h);
         gradient.addColorStop(0, `rgba(${accentR},${accentG},${accentB},${waveAlpha})`);

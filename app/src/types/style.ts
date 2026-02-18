@@ -2,56 +2,52 @@ export type AccentSource = "system" | "custom";
 
 export type BackgroundMode = "solid" | "acrylic" | "visualizer";
 
-export type UnfocusedVisualizerMode = "animated" | "paused" | "off";
+export type UnfocusedVisualizerMode = "animated" | "paused";
+
+export type VisualizerColorSource = "accent" | "custom";
 
 export type VisualizerPreset =
   | "xmb-smoke"
   | "starfield"
   | "matrix-rain"
-  | "plasma"
   | "gradient-mesh"
   | "noise-flow"
   | "geometric-pulse";
 
-export interface WindowStateStyle {
+export interface BackgroundStyle {
   backgroundMode: BackgroundMode;
   backgroundColor: string;
   backgroundOpacity: number;
-  acrylicOpacity: number;
-  acrylicBlur: number;
   visualizerPreset: VisualizerPreset;
   visualizerOpacity: number;
   visualizerIntensity: number;
+  visualizerColorSource: VisualizerColorSource;
+  visualizerColor: string;
+  unfocusedVisualizerMode: UnfocusedVisualizerMode;
 }
 
 export interface StyleSettings {
   accentSource: AccentSource;
   customAccentColor: string;
   faderColumnWidth: number;
-  focused: WindowStateStyle;
-  unfocused: WindowStateStyle;
-  unfocusedVisualizerMode: UnfocusedVisualizerMode;
+  background: BackgroundStyle;
 }
 
-export const DEFAULT_WINDOW_STATE_STYLE: WindowStateStyle = {
+export const DEFAULT_BACKGROUND_STYLE: BackgroundStyle = {
   backgroundMode: "acrylic",
   backgroundColor: "#1e1e1e",
   backgroundOpacity: 1,
-  acrylicOpacity: 0.55,
-  acrylicBlur: 0.8,
   visualizerPreset: "xmb-smoke",
   visualizerOpacity: 0.4,
   visualizerIntensity: 0.5,
+  visualizerColorSource: "accent",
+  visualizerColor: "#3a86ff",
+  unfocusedVisualizerMode: "paused",
 };
 
 export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   accentSource: "system",
   customAccentColor: "#3a86ff",
   faderColumnWidth: 0,
-  focused: { ...DEFAULT_WINDOW_STATE_STYLE },
-  unfocused: {
-    ...DEFAULT_WINDOW_STATE_STYLE,
-    backgroundMode: "solid",
-  },
-  unfocusedVisualizerMode: "off",
+  background: { ...DEFAULT_BACKGROUND_STYLE },
 };

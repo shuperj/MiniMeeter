@@ -74,13 +74,13 @@ export default function GradientMeshVisualizer({
       ctx.clearRect(0, 0, w, h);
 
       const accentR = parseInt(
-        getComputedStyle(document.documentElement).getPropertyValue("--accent-r").trim() || "58"
+        getComputedStyle(document.documentElement).getPropertyValue("--viz-r").trim() || "58"
       );
       const accentG = parseInt(
-        getComputedStyle(document.documentElement).getPropertyValue("--accent-g").trim() || "134"
+        getComputedStyle(document.documentElement).getPropertyValue("--viz-g").trim() || "134"
       );
       const accentB = parseInt(
-        getComputedStyle(document.documentElement).getPropertyValue("--accent-b").trim() || "255"
+        getComputedStyle(document.documentElement).getPropertyValue("--viz-b").trim() || "255"
       );
 
       // Compositing: lighter blend for overlapping glows

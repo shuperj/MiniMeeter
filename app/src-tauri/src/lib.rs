@@ -36,7 +36,7 @@ pub fn run() {
             #[cfg(target_os = "windows")]
             {
                 use window_vibrancy::apply_acrylic;
-                let _ = apply_acrylic(&window, Some((30, 30, 30, 200)));
+                let _ = apply_acrylic(&window, Some((10, 10, 10, 255)));
             }
 
             Ok(())
