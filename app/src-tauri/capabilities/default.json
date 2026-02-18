@@ -12,6 +12,9 @@
     "core:event:allow-listen",
     "core:event:allow-emit",
     "global-shortcut:default",
-    "store:default"
+    "store:default",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }
