@@ -17,32 +17,6 @@ A lightweight, easily resizeable audio mixer for [Voicemeeter Banana](https://vb
 - **A1 output switching** - Change your main output device from the title bar
 - **Fully configurable** - Remap strips, rename channels, adjust dB ranges from the settings panel
 
-## Configuring A1 Output Devices
-
-MiniMeeter lets you switch your A1 output device from the title bar dropdown. To set this up, open **Settings > Outputs** and add your devices.
-
-> **The device name must match Voicemeeter exactly.** Open Voicemeeter's own A1 device selector (click "A1" in Voicemeeter's title bar) to see the available devices and their exact names.
-
-<!-- Upload the Voicemeeter A1 device selector screenshot to GitHub and replace this with the image URL -->
-<!-- ![Voicemeeter A1 device selector](https://github.com/user-attachments/assets/REPLACE_WITH_UPLOADED_IMAGE_ID) -->
-
-For each device, configure three fields:
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| **Driver** | The audio driver type | `ASIO`, `MME`, `WDM`, or `KS` |
-| **Device name** | Must match the device name shown in Voicemeeter **exactly** | `Focusrite USB ASIO` |
-| **Display label** | Friendly name shown in MiniMeeter's dropdown (auto-generated if left blank) | `Focusrite` |
-
-**How to find the correct device name:**
-
-1. In Voicemeeter, click the **A1** button in the top-right corner to open the device selector
-2. Select the driver type on the left (WDM, KS, MME, or ASIO)
-3. Copy the **exact device name** shown in the list — for example, `Speakers (JBL Quantum TWS)` or `Focusrite USB ASIO`
-4. In MiniMeeter Settings > Outputs, select the same driver type and paste the name
-
-If the name doesn't match exactly, the device switch will silently fail.
-
 ## Requirements
 
 - Windows 10/11
