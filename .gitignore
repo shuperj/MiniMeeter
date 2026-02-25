@@ -19,3 +19,9 @@ Thumbs.db
 
 # Debug
 *.pdb
+
+# Agent instructions (local only)
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.claude/
