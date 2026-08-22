@@ -1,5 +1,5 @@
 use crate::accent::{get_system_accent_color, AccentColor};
-use crate::voicemeeter::VoicemeeterAPI;
+use crate::voicemeeter::{LoginStatus, VoicemeeterAPI};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,6 +12,20 @@ use crate::WindowState;
 pub struct VmState {
     pub api: Mutex<Option<VoicemeeterAPI>>,
     pub polling: Arc<AtomicBool>,
+    /// Whether the audio engine is currently reachable. Maintained by the polling
+    /// thread, which is the only thing that can observe Voicemeeter coming back.
+    pub connected: Arc<AtomicBool>,
+}
+
+/// Connection state reported to the frontend.
+///
+/// `Waiting` is a normal, recoverable state: Voicemeeter is not running yet
+/// (autostart race) or the audio engine is mid-restart (device switch).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum VmConnection {
+    Connected,
+    Waiting,
 }
 
 /// Maps normalized shortcut strings to Voicemeeter strip indices.
@@ -103,71 +117,127 @@ fn read_strip(api: &VoicemeeterAPI, strip: u32) -> StripState {
     }
 }
 
-#[tauri::command]
-pub fn vm_login(state: State<VmState>, app: AppHandle) -> Result<String, String> {
-    let mut guard = state.api.lock().map_err(|e| e.to_string())?;
+/// Current connection state as last observed by the polling thread.
+fn current_connection(state: &VmState) -> VmConnection {
+    if state.connected.load(Ordering::SeqCst) {
+        VmConnection::Connected
+    } else {
+        VmConnection::Waiting
+    }
+}
 
-    if guard.is_some() {
-        return Ok("Already logged in".into());
+/// Connect to Voicemeeter and make sure the polling thread is running.
+///
+/// Safe to call repeatedly: if the API handle already exists this just re-reports
+/// status and revives the poller if it stopped. A `Waiting` result is not a failure --
+/// the poller emits `vm:connection` once Voicemeeter appears.
+#[tauri::command]
+pub fn vm_login(state: State<VmState>, app: AppHandle) -> Result<VmConnection, String> {
+    {
+        let mut guard = state.api.lock().map_err(|e| e.to_string())?;
+        if guard.is_none() {
+            let mut api = VoicemeeterAPI::new()?;
+            // rc == 1 means "logged in, but Voicemeeter is not running" -- a valid
+            // handle we keep so the poller can detect the app starting up later.
+            let status = api.login()?;
+            *guard = Some(api);
+            state
+                .connected
+                .store(status == LoginStatus::Connected, Ordering::SeqCst);
+        }
     }
 
-    let mut api = VoicemeeterAPI::new()?;
-    api.login()?;
-    *guard = Some(api);
-    drop(guard);
+    // Spawn the poller only on a genuine false -> true transition.
+    if state
+        .polling
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+    {
+        spawn_poller(state.polling.clone(), app.clone());
+    }
 
-    // Start polling thread
-    state.polling.store(true, Ordering::SeqCst);
-    let polling = state.polling.clone();
-    let app_handle = app.clone();
+    Ok(current_connection(&state))
+}
 
+fn spawn_poller(polling: Arc<AtomicBool>, app_handle: AppHandle) {
     thread::spawn(move || {
+        // Emit only on transitions, not every tick.
+        let mut last_healthy: Option<bool> = None;
+
         while polling.load(Ordering::SeqCst) {
-            let vm_state: State<VmState> = app_handle.state();
-            let guard = vm_state.api.lock();
-            if let Ok(ref lock) = guard {
-                if let Some(ref api) = **lock {
-                    // Check for parameter changes (gain, mute)
-                    let dirty = api.is_dirty();
-                    match dirty {
-                        Ok(true) => {
-                            let strips: Vec<StripState> = MONITORED_STRIPS
-                                .iter()
-                                .map(|&s| read_strip(api, s))
-                                .collect();
-                            let _ = app_handle.emit("vm:state-update", AllStripsState { strips });
-                        }
-                        Ok(false) => {}
-                        Err(_) => {
-                            polling.store(false, Ordering::SeqCst);
-                            drop(guard);
-                            break;
+            let mut healthy = false;
+
+            {
+                let vm_state: State<VmState> = app_handle.state();
+                // Bind the lock result before matching: an `if let` scrutinee temporary
+                // would outlive `vm_state` and fail to borrow-check.
+                let guard = vm_state.api.lock();
+                if let Ok(ref lock) = guard {
+                    if let Some(ref api) = **lock {
+                        match api.is_dirty() {
+                            Ok(dirty) => {
+                                healthy = true;
+                                // Resync fully when the engine comes back, otherwise the
+                                // UI keeps showing pre-restart gains.
+                                let recovered = last_healthy != Some(true);
+                                if dirty || recovered {
+                                    let strips: Vec<StripState> = MONITORED_STRIPS
+                                        .iter()
+                                        .map(|&s| read_strip(api, s))
+                                        .collect();
+                                    let _ = app_handle
+                                        .emit("vm:state-update", AllStripsState { strips });
+                                }
+
+                                // Always read levels (they change continuously)
+                                let levels: Vec<StripLevel> = MONITORED_STRIPS
+                                    .iter()
+                                    .map(|&s| read_strip_level(api, s))
+                                    .collect();
+                                let _ = app_handle.emit("vm:levels", AllStripLevels { levels });
+
+                                // Read output bus levels (A1 = Bus[0])
+                                let bus_levels = vec![read_bus_level(api, 0)];
+                                let _ = app_handle
+                                    .emit("vm:bus-levels", AllBusLevels { levels: bus_levels });
+                            }
+                            // IsParametersDirty returns -2 ("no server") while the engine
+                            // restarts and while Voicemeeter is not running. Both are
+                            // transient: back off and keep watching. Breaking here would
+                            // strand the UI permanently, since nothing else revives it.
+                            Err(_) => {}
                         }
                     }
-
-                    // Always read levels (they change continuously)
-                    let levels: Vec<StripLevel> = MONITORED_STRIPS
-                        .iter()
-                        .map(|&s| read_strip_level(api, s))
-                        .collect();
-                    let _ = app_handle.emit("vm:levels", AllStripLevels { levels });
-
-                    // Read output bus levels (A1 = Bus[0])
-                    let bus_levels = vec![read_bus_level(api, 0)];
-                    let _ = app_handle.emit("vm:bus-levels", AllBusLevels { levels: bus_levels });
                 }
+                drop(guard);
             }
-            drop(guard);
-            thread::sleep(Duration::from_millis(33)); // ~30fps
-        }
-    });
 
-    Ok("Logged in".into())
+            if last_healthy != Some(healthy) {
+                last_healthy = Some(healthy);
+                let vm_state: State<VmState> = app_handle.state();
+                vm_state.connected.store(healthy, Ordering::SeqCst);
+                let payload = if healthy {
+                    VmConnection::Connected
+                } else {
+                    VmConnection::Waiting
+                };
+                let _ = app_handle.emit("vm:connection", payload);
+            }
+
+            // ~30fps while live; back off while waiting so we do not spin on a dead API.
+            thread::sleep(Duration::from_millis(if healthy { 33 } else { 250 }));
+        }
+
+        // The loop exits only via vm_logout.
+        let vm_state: State<VmState> = app_handle.state();
+        vm_state.connected.store(false, Ordering::SeqCst);
+    });
 }
 
 #[tauri::command]
 pub fn vm_logout(state: State<VmState>) -> Result<String, String> {
     state.polling.store(false, Ordering::SeqCst);
+    state.connected.store(false, Ordering::SeqCst);
     let mut guard = state.api.lock().map_err(|e| e.to_string())?;
     if let Some(ref mut api) = *guard {
         api.logout();
@@ -215,11 +285,11 @@ pub fn vm_set_a1_device(
     let guard = state.api.lock().map_err(|e| e.to_string())?;
     let api = guard.as_ref().ok_or("Not connected")?;
     let param = format!("Bus[0].Device.{driver}");
-    let rc = api.set_string(&param, &name);
-    if rc.is_ok() {
-        let _ = api.set_string("Command", "Restart");
-    }
-    rc
+    api.set_string(&param, &name)?;
+    // The assignment is inert until the audio engine restarts. Errors here are
+    // reported rather than swallowed -- a silent failure looks exactly like a
+    // switched device that never actually moved.
+    api.restart_engine()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -227,6 +297,16 @@ pub struct A1DeviceInfo {
     pub driver: String,
     pub name: String,
     pub display: String,
+}
+
+impl A1DeviceInfo {
+    fn new(driver: &str, name: String) -> Self {
+        Self {
+            display: format!("{}: {}", driver.to_uppercase(), name),
+            driver: driver.to_string(),
+            name,
+        }
+    }
 }
 
 fn driver_type_to_string(t: i32) -> &'static str {
@@ -249,34 +329,42 @@ pub fn vm_get_a1_device(state: State<VmState>) -> Result<Option<A1DeviceInfo>, S
         return Ok(None);
     }
 
-    // Try to find driver type by enumerating output devices
-    let count = api.output_device_count();
-    for i in 0..count {
-        if let Ok((dev_type, name)) = api.output_device_desc(i) {
-            if name == device_name {
-                let driver = driver_type_to_string(dev_type);
-                return Ok(Some(A1DeviceInfo {
-                    display: format!("{}: {}", driver.to_uppercase(), name),
-                    driver: driver.to_string(),
-                    name,
-                }));
-            }
+    // Match the active device against enumeration to recover its driver type
+    for (dev_type, name) in api.list_output_devices() {
+        if name == device_name {
+            return Ok(Some(A1DeviceInfo::new(driver_type_to_string(dev_type), name)));
         }
     }
 
     // Device found but couldn't match via enumeration — default to WDM
-    Ok(Some(A1DeviceInfo {
-        display: format!("WDM: {}", device_name),
-        driver: "wdm".to_string(),
-        name: device_name,
-    }))
+    Ok(Some(A1DeviceInfo::new("wdm", device_name)))
 }
 
 #[tauri::command]
 pub fn vm_restart_engine(state: State<VmState>) -> Result<(), String> {
     let guard = state.api.lock().map_err(|e| e.to_string())?;
     let api = guard.as_ref().ok_or("Not connected")?;
-    api.set_string("Command", "Restart")
+    api.restart_engine()
+}
+
+/// Launch Voicemeeter Banana. Only ever reached from an explicit user action.
+#[tauri::command]
+pub fn vm_run_voicemeeter(state: State<VmState>) -> Result<(), String> {
+    let guard = state.api.lock().map_err(|e| e.to_string())?;
+    let api = guard.as_ref().ok_or("Not connected")?;
+    api.run_voicemeeter()
+}
+
+/// Every output device Voicemeeter can currently see, for the Outputs picker.
+#[tauri::command]
+pub fn vm_list_output_devices(state: State<VmState>) -> Result<Vec<A1DeviceInfo>, String> {
+    let guard = state.api.lock().map_err(|e| e.to_string())?;
+    let api = guard.as_ref().ok_or("Not connected")?;
+    Ok(api
+        .list_output_devices()
+        .into_iter()
+        .map(|(dev_type, name)| A1DeviceInfo::new(driver_type_to_string(dev_type), name))
+        .collect())
 }
 
 #[tauri::command]

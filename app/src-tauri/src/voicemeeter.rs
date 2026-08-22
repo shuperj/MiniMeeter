@@ -13,6 +13,21 @@ type FnIsDirty = unsafe extern "C" fn() -> c_long;
 type FnGetLevel = unsafe extern "C" fn(c_long, c_long, *mut c_float) -> c_long;
 type FnOutputGetDeviceNumber = unsafe extern "C" fn() -> c_long;
 type FnOutputGetDeviceDesc = unsafe extern "C" fn(c_long, *mut c_long, *mut c_char, *mut c_char) -> c_long;
+type FnRunVoicemeeter = unsafe extern "C" fn(c_long) -> c_long;
+
+/// Voicemeeter Banana — the edition MiniMeeter targets (see strip layout in commands.rs).
+const VOICEMEETER_TYPE_BANANA: c_long = 2;
+
+/// Outcome of VBVMR_Login. The DLL distinguishes "connected" from
+/// "logged in, but the Voicemeeter application isn't running" (rc == 1),
+/// and the difference decides whether we have a usable audio engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoginStatus {
+    /// rc == 0 — Voicemeeter is running and the engine is reachable.
+    Connected,
+    /// rc == 1 — login succeeded but the Voicemeeter application is not launched.
+    NotRunning,
+}
 
 pub struct VoicemeeterAPI {
     _lib: Library,
@@ -26,6 +41,7 @@ pub struct VoicemeeterAPI {
     fn_get_level: FnGetLevel,
     fn_output_get_device_number: Option<FnOutputGetDeviceNumber>,
     fn_output_get_device_desc: Option<FnOutputGetDeviceDesc>,
+    fn_run_voicemeeter: Option<FnRunVoicemeeter>,
     logged_in: bool,
 }
 
@@ -73,6 +89,8 @@ impl VoicemeeterAPI {
                 lib.get::<FnOutputGetDeviceNumber>(b"VBVMR_Output_GetDeviceNumber").ok().map(|s| *s);
             let fn_output_get_device_desc: Option<FnOutputGetDeviceDesc> =
                 lib.get::<FnOutputGetDeviceDesc>(b"VBVMR_Output_GetDeviceDescA").ok().map(|s| *s);
+            let fn_run_voicemeeter: Option<FnRunVoicemeeter> =
+                lib.get::<FnRunVoicemeeter>(b"VBVMR_RunVoicemeeter").ok().map(|s| *s);
 
             Ok(Self {
                 fn_login: *fn_login,
@@ -85,19 +103,56 @@ impl VoicemeeterAPI {
                 fn_get_level: *fn_get_level,
                 fn_output_get_device_number,
                 fn_output_get_device_desc,
+                fn_run_voicemeeter,
                 _lib: lib,
                 logged_in: false,
             })
         }
     }
 
-    pub fn login(&mut self) -> Result<(), String> {
+    /// Log in to the Voicemeeter Remote API.
+    ///
+    /// Per the SDK: 0 = OK, 1 = OK but the Voicemeeter application is not launched,
+    /// -1 = cannot get client, -2 = unexpected login. rc == 1 is a *successful* login
+    /// against a missing application, so we keep the handle and report NotRunning
+    /// rather than treating it as connected.
+    pub fn login(&mut self) -> Result<LoginStatus, String> {
         let rc = unsafe { (self.fn_login)() };
-        if rc >= 0 {
-            self.logged_in = true;
+        match rc {
+            0 => {
+                self.logged_in = true;
+                Ok(LoginStatus::Connected)
+            }
+            1 => {
+                self.logged_in = true;
+                Ok(LoginStatus::NotRunning)
+            }
+            _ => Err(format!(
+                "VBVMR_Login failed with code {rc}. Is Voicemeeter Banana installed correctly?"
+            )),
+        }
+    }
+
+    /// Request an audio-engine restart.
+    ///
+    /// `Command.Restart` is a FLOAT parameter — setting a string parameter named
+    /// "Command" is not valid and silently fails. Bus device assignments only take
+    /// effect once the engine restarts, so this is what actually moves the audio.
+    pub fn restart_engine(&self) -> Result<(), String> {
+        self.set_float("Command.Restart", 1.0)
+    }
+
+    /// Launch Voicemeeter Banana via the DLL. Returns an error if the running
+    /// DLL is too old to export VBVMR_RunVoicemeeter.
+    pub fn run_voicemeeter(&self) -> Result<(), String> {
+        let f = self
+            .fn_run_voicemeeter
+            .ok_or("This Voicemeeter DLL cannot launch the application (VBVMR_RunVoicemeeter missing)")?;
+        let rc = unsafe { f(VOICEMEETER_TYPE_BANANA) };
+        if rc == 0 {
             Ok(())
         } else {
-            Err(format!("VBVMR_Login failed with code {rc}. Is Voicemeeter Banana running?"))
+            Err(format!("VBVMR_RunVoicemeeter failed: {rc}"))
         }
     }
 
@@ -216,6 +271,21 @@ impl VoicemeeterAPI {
         } else {
             Err(format!("Output_GetDeviceDescA({index}) failed: {rc}"))
         }
+    }
+
+    /// Enumerate every output device Voicemeeter can see as (driver_type, name).
+    /// Devices that fail to describe are skipped rather than aborting the sweep.
+    pub fn list_output_devices(&self) -> Vec<(i32, String)> {
+        let count = self.output_device_count();
+        let mut devices = Vec::new();
+        for i in 0..count {
+            if let Ok((dev_type, name)) = self.output_device_desc(i) {
+                if !name.is_empty() {
+                    devices.push((dev_type, name));
+                }
+            }
+        }
+        devices
     }
 
     fn require_login(&self) -> Result<(), String> {

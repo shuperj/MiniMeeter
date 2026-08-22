@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { enable as autostartEnable, disable as autostartDisable, isEnabled as autostartIsEnabled } from "@tauri-apps/plugin-autostart";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ChannelConfig, A1Device } from "../config";
-import { STRIP_LABELS, DRIVER_OPTIONS } from "../config";
+import { STRIP_LABELS } from "../config";
 import type { StyleSettings } from "../types/style";
 import { DEFAULT_STYLE_SETTINGS } from "../types/style";
 import StyleTab from "./settings/StyleTab";
@@ -24,6 +25,13 @@ interface SettingsPanelProps {
 type Tab = "channels" | "outputs" | "style";
 
 const AVAILABLE_STRIPS = [0, 1, 2, 3, 4];
+
+/** Stable identity for an output device across driver + name. */
+const deviceKey = (d: { driver: string; name: string }) => `${d.driver}|${d.name}`;
+
+/** The label auto-generated on save when the user leaves the display field blank. */
+const autoDisplay = (d: { driver: string; name: string }) =>
+  `${d.driver.toUpperCase()}: ${d.name}`;
 
 /** Convert a KeyboardEvent into a Tauri accelerator string */
 function keyEventToAccelerator(e: KeyboardEvent): string | null {
@@ -70,6 +78,10 @@ export default function SettingsPanel({
 
   const [autostartEnabled, setAutostartEnabled] = useState(false);
 
+  // Output devices Voicemeeter can currently see.
+  const [detectedDevices, setDetectedDevices] = useState<A1Device[]>([]);
+  const [deviceError, setDeviceError] = useState<string | null>(null);
+
   // Hotkey recording state: index of channel currently being recorded, or null
   const [recordingIdx, setRecordingIdx] = useState<number | null>(null);
   const recordingRef = useRef<number | null>(null);
@@ -102,13 +114,43 @@ export default function SettingsPanel({
     return () => window.removeEventListener("keydown", handler, true);
   }, [recordingIdx]);
 
-  const handleOpen = () => {
-    setChDraft(channels.map((c) => ({ ...c })));
-    setOutDraft(outputs.map((o) => ({ ...o })));
-    setDecayDraft(meterDecay);
-    setStyleDraft({ ...DEFAULT_STYLE_SETTINGS, ...styleSettings });
+  // Seed the drafts the moment `open` flips true, during render rather than from a
+  // framer-motion animation callback. Effects — including the live preview below —
+  // then see the real saved settings on their first run. Previously they briefly saw
+  // DEFAULT_STYLE_SETTINGS, whose "system" accent kicked off a stale colour fetch
+  // that landed after the custom colour had been reapplied and overwrote it.
+  const [prevOpen, setPrevOpen] = useState(false);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setChDraft(channels.map((c) => ({ ...c })));
+      setOutDraft(outputs.map((o) => ({ ...o })));
+      setDecayDraft(meterDecay);
+      setStyleDraft({ ...DEFAULT_STYLE_SETTINGS, ...styleSettings });
+    }
+  }
+
+  // Genuinely async, so it stays in an effect.
+  useEffect(() => {
+    if (!open) return;
     autostartIsEnabled().then(setAutostartEnabled).catch(() => setAutostartEnabled(false));
-  };
+  }, [open]);
+
+  // Enumerate real output devices when the Outputs tab is shown.
+  useEffect(() => {
+    if (!open || tab !== "outputs") return;
+    let cancelled = false;
+    invoke<A1Device[]>("vm_list_output_devices")
+      .then((devices) => {
+        if (cancelled) return;
+        setDetectedDevices(devices);
+        setDeviceError(null);
+      })
+      .catch((e) => {
+        if (!cancelled) setDeviceError(String(e));
+      });
+    return () => { cancelled = true; };
+  }, [open, tab]);
 
   const handleAutostartToggle = async (checked: boolean) => {
     setAutostartEnabled(checked);
@@ -182,10 +224,41 @@ export default function SettingsPanel({
   };
 
   const addOutput = () => {
+    const first = detectedDevices[0];
     setOutDraft((prev) => [
       ...prev,
-      { driver: "wdm", name: "", display: "" },
+      first ? { ...first, display: "" } : { driver: "wdm", name: "", display: "" },
     ]);
+  };
+
+  /**
+   * Options for one row: everything detected, plus this row's own device if it
+   * isn't currently enumerable (unplugged, or Voicemeeter not reachable) so
+   * editing never silently drops a configured entry.
+   */
+  const optionsFor = (out: A1Device): A1Device[] => {
+    if (!out.name) return detectedDevices;
+    const known = detectedDevices.some((d) => deviceKey(d) === deviceKey(out));
+    return known ? detectedDevices : [...detectedDevices, out];
+  };
+
+  const selectDevice = (idx: number, key: string) => {
+    const match = [...detectedDevices, ...outDraft].find((d) => deviceKey(d) === key);
+    if (!match) return;
+    setOutDraft((prev) =>
+      prev.map((o, i) => {
+        if (i !== idx) return o;
+        // Clear an auto-generated label so it regenerates for the new device;
+        // keep anything the user typed themselves.
+        const wasAuto = !o.display || o.display === autoDisplay(o);
+        return {
+          ...o,
+          driver: match.driver,
+          name: match.name,
+          display: wasAuto ? "" : o.display,
+        };
+      }),
+    );
   };
 
   // --- Save ---
@@ -199,7 +272,9 @@ export default function SettingsPanel({
     onSaveChannels(chDraft);
     onSaveOutputs(finalOutputs);
     onSaveMeterDecay(decayDraft);
-    onSaveStyle(styleDraft);
+    // alwaysOnTop isn't editable here — carry the live value so pinning while the
+    // panel is open doesn't get reverted by a stale draft.
+    onSaveStyle({ ...styleDraft, alwaysOnTop: styleSettings.alwaysOnTop });
     onClose();
   };
 
@@ -217,7 +292,6 @@ export default function SettingsPanel({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
-          onAnimationStart={() => handleOpen()}
         >
           {/* Backdrop */}
           <div className="absolute inset-0 bg-[#1a1a1a]/90" onClick={onClose} />
@@ -428,32 +502,37 @@ export default function SettingsPanel({
                   <p className={`${smallText} text-white/50 m-0`}>
                     Configure A1 output device options shown in the title bar dropdown.
                   </p>
+                  {deviceError && (
+                    <p className={`${smallText} text-amber-300/70 m-0`}>
+                      Couldn't read the device list ({deviceError}). Existing entries are
+                      still editable.
+                    </p>
+                  )}
+                  {!deviceError && detectedDevices.length === 0 && (
+                    <p className={`${smallText} text-white/40 m-0`}>
+                      No output devices detected — is Voicemeeter running?
+                    </p>
+                  )}
                   {outDraft.map((out, idx) => (
                     <div
                       key={idx}
                       className="flex flex-wrap items-center gap-[clamp(4px,1vw,8px)] bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)]"
                     >
-                      {/* Driver */}
+                      {/* Device — driver and name come as a pair, so a typo can't
+                          produce a name Voicemeeter will silently reject. */}
                       <select
-                        className={`${inputCls} ${smallText} px-[clamp(2px,0.3vw,4px)] py-[2px] cursor-pointer`}
+                        className={`${inputCls} ${medText} px-[clamp(3px,0.5vw,6px)] py-[2px] flex-1 min-w-[clamp(100px,24vw,200px)] cursor-pointer`}
                         style={{ colorScheme: "dark" }}
-                        value={out.driver}
-                        onChange={(e) => updateOutField(idx, "driver", e.target.value)}
+                        value={out.name ? deviceKey(out) : ""}
+                        onChange={(e) => selectDevice(idx, e.target.value)}
                       >
-                        {DRIVER_OPTIONS.map((d) => (
-                          <option key={d} value={d}>
-                            {d.toUpperCase()}
+                        {!out.name && <option value="">Select a device…</option>}
+                        {optionsFor(out).map((d) => (
+                          <option key={deviceKey(d)} value={deviceKey(d)}>
+                            {autoDisplay(d)}
                           </option>
                         ))}
                       </select>
-
-                      {/* Device name */}
-                      <input
-                        className={`${inputCls} ${medText} px-[clamp(3px,0.5vw,6px)] py-[2px] flex-1 min-w-[clamp(80px,20vw,160px)]`}
-                        value={out.name}
-                        onChange={(e) => updateOutField(idx, "name", e.target.value)}
-                        placeholder="Device name (exact)"
-                      />
 
                       {/* Display label */}
                       <input

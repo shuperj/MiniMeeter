@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { A1Device } from "../config";
 import { invoke } from "@tauri-apps/api/core";
@@ -9,6 +10,10 @@ interface TitlebarProps {
   onSettingsClick: () => void;
   busGain: number;
   showOutputLevel: boolean;
+  /** Engine is temporarily unreachable (restarting after a device switch, etc.) */
+  reconnecting?: boolean;
+  pinned: boolean;
+  onPinToggle: () => void;
 }
 
 function formatDb(v: number): string {
@@ -17,26 +22,65 @@ function formatDb(v: number): string {
   return `${sign}${String(Math.abs(rounded)).padStart(2, "0")}dB`;
 }
 
-export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, busGain, showOutputLevel }: TitlebarProps) {
+export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, busGain, showOutputLevel, reconnecting, pinned, onPinToggle }: TitlebarProps) {
   const appWindow = getCurrentWindow();
+  const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState<string | null>(null);
 
   const handleA1Change = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const idx = Number(e.target.value);
-    const device: A1Device = a1Choices[idx];
+    const device: A1Device | undefined = a1Choices[idx];
+    if (!device) return;
+
+    const previous = selectedA1;
+    setSwitchError(null);
+    setSwitching(true);
     onA1Change(idx);
+
     try {
       await invoke("vm_set_a1_device", { driver: device.driver, name: device.name });
-    } catch {
-      // Will be apparent if audio doesn't switch
+    } catch (err) {
+      // Never leave the dropdown claiming a device that didn't actually become
+      // active — that's what made the old silent catch so confusing.
+      onA1Change(previous);
+      setSwitchError(String(err));
+    } finally {
+      setSwitching(false);
     }
   };
 
+  const busy = switching || reconnecting;
+
   return (
     <div
-      className="flex items-center h-[clamp(24px,8dvh,36px)] px-[clamp(6px,2vw,12px)] select-none shrink-0"
+      // z-[45] keeps the titlebar above the connection overlay (z-40) so the window
+      // stays closable/movable while waiting for Voicemeeter. The settings panel
+      // (z-50) is still allowed to cover it.
+      className="relative z-[45] flex items-center h-[clamp(24px,8dvh,36px)] px-[clamp(6px,2vw,12px)] select-none shrink-0"
       style={{ backgroundColor: "var(--accent)" }}
       data-tauri-drag-region
     >
+      {/* Pin / always-on-top */}
+      <button
+        className="w-[clamp(16px,4vw,24px)] h-[clamp(16px,4dvh,24px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer hover:bg-white/20 mr-[clamp(2px,0.5vw,6px)] shrink-0"
+        style={{
+          color: "var(--accent-fg)",
+          backgroundColor: pinned ? "rgba(255,255,255,0.28)" : "transparent",
+          opacity: pinned ? 1 : 0.65,
+        }}
+        onClick={onPinToggle}
+        title={pinned ? "Unpin — allow other windows on top" : "Pin — keep on top of other windows"}
+        aria-pressed={pinned}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className="w-[clamp(10px,2.5vw,14px)] h-[clamp(10px,2.5vw,14px)]"
+        >
+          <path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" />
+        </svg>
+      </button>
+
       {/* Settings gear */}
       <button
         className="w-[clamp(16px,4vw,24px)] h-[clamp(16px,4dvh,24px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer hover:bg-white/20 mr-[clamp(2px,0.5vw,6px)] shrink-0"
@@ -66,6 +110,26 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
         MiniMeeter
       </span>
 
+      {/* Reconnecting indicator — engine restart or Voicemeeter briefly gone */}
+      {busy && (
+        <span
+          className="w-[clamp(8px,2vw,11px)] h-[clamp(8px,2vw,11px)] rounded-full border-2 border-white/25 animate-spin mr-[clamp(3px,0.8vw,6px)] shrink-0"
+          style={{ borderTopColor: "var(--accent-fg)" }}
+          title="Reconnecting to Voicemeeter…"
+        />
+      )}
+
+      {/* Failed device switch */}
+      {switchError && !busy && (
+        <span
+          className="text-[clamp(0.5rem,1.6vw,0.65rem)] font-bold mr-[clamp(3px,0.8vw,6px)] shrink-0 cursor-help text-red-200"
+          title={`Output switch failed: ${switchError}`}
+          onClick={() => setSwitchError(null)}
+        >
+          ⚠
+        </span>
+      )}
+
       {/* A1 output gain readout */}
       {showOutputLevel && (
         <span
@@ -86,10 +150,11 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
           A1:
         </span>
         <select
-          className="bg-black/20 border-none rounded-[3px] text-[clamp(0.5rem,1.6vw,0.65rem)] px-[clamp(2px,0.5vw,4px)] py-[1px] max-w-[clamp(60px,20vw,160px)] truncate outline-none cursor-pointer"
+          className="bg-black/20 border-none rounded-[3px] text-[clamp(0.5rem,1.6vw,0.65rem)] px-[clamp(2px,0.5vw,4px)] py-[1px] max-w-[clamp(60px,20vw,160px)] truncate outline-none cursor-pointer disabled:opacity-60"
           style={{ color: "var(--accent-fg)" }}
           value={selectedA1}
           onChange={handleA1Change}
+          disabled={switching}
         >
           {a1Choices.map((d, i) => (
             <option key={i} value={i}>

@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import type { AccentSource } from "../types/style";
 
 interface AccentColor {
@@ -33,23 +32,30 @@ function hexToAccent(hex: string): AccentColor {
 export function useAccentColor(source: AccentSource, customColor: string) {
   const [accent, setAccent] = useState<AccentColor>(DEFAULT_ACCENT);
 
-  // System accent: fetch from Rust on mount + listen for changes
+  // System accent: fetch from Rust on mount.
+  //
+  // The cancellation guard is load-bearing. `source` flips to "system" briefly
+  // whenever settings are opened before the saved style is applied (and at startup
+  // before the store loads). Without the guard, this fetch resolves *after* the
+  // custom colour has been re-applied and silently overwrites it — and nothing
+  // re-runs the custom effect afterwards, so the wrong colour sticks for the
+  // whole session.
   useEffect(() => {
     if (source !== "system") return;
+    let cancelled = false;
 
     invoke<AccentColor>("get_accent_color")
       .then((color) => {
+        if (cancelled) return;
         setAccent(color);
         applyToCSS(color);
       })
-      .catch(() => applyToCSS(DEFAULT_ACCENT));
+      .catch(() => {
+        if (cancelled) return;
+        applyToCSS(DEFAULT_ACCENT);
+      });
 
-    const unlisten = listen<AccentColor>("theme:accent-changed", (event) => {
-      setAccent(event.payload);
-      applyToCSS(event.payload);
-    });
-
-    return () => { unlisten.then((fn) => fn()); };
+    return () => { cancelled = true; };
   }, [source]);
 
   // Custom accent: derive from hex client-side

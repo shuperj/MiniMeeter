@@ -32,14 +32,34 @@ interface AllBusLevels {
   levels: BusLevel[];
 }
 
+/** Payload of the `vm:connection` event emitted by the Rust polling thread. */
+interface VmConnectionPayload {
+  state: "connected" | "waiting";
+}
+
+/**
+ * - `connecting` — the very first login attempt is still in flight
+ * - `waiting`    — logged in, but Voicemeeter isn't running or the engine is restarting
+ * - `connected`  — engine reachable
+ * - `error`      — hard failure (e.g. the Voicemeeter DLL is missing)
+ */
+export type ConnectionState = "connecting" | "waiting" | "connected" | "error";
+
 export interface ChannelState {
   gain: number;
   muted: boolean;
 }
 
+/** How long to wait before retrying after a hard login failure. */
+const ERROR_RETRY_MS = 3000;
+
 export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
-  const [connected, setConnected] = useState(false);
+  const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [error, setError] = useState<string | null>(null);
+  // Once we've been live, a drop is a transient reconnect rather than a cold start,
+  // and the UI should stay usable instead of throwing up a full-screen gate.
+  const [everConnected, setEverConnected] = useState(false);
+
   const [channels, setChannels] = useState<Map<number, ChannelState>>(() => {
     const map = new Map<number, ChannelState>();
     for (const ch of channelConfigs) {
@@ -62,44 +82,74 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
   // Track which strips are being actively dragged to avoid overwriting
   const dragging = useRef<Set<number>>(new Set());
 
+  const applyStrips = useCallback((strips: StripState[]) => {
+    setChannels((prev) => {
+      const next = new Map(prev);
+      for (const s of strips) {
+        // Don't overwrite a strip the user is currently dragging
+        if (!dragging.current.has(s.strip)) {
+          next.set(s.strip, { gain: s.gain, muted: s.muted });
+        }
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: number | undefined;
 
-    async function connect() {
+    const markConnected = () => {
+      if (cancelled) return;
+      setConnection("connected");
+      setEverConnected(true);
+      setError(null);
+    };
+
+    async function attempt() {
       try {
-        await invoke("vm_login");
+        const status = await invoke<VmConnectionPayload>("vm_login");
         if (cancelled) return;
-        setConnected(true);
         setError(null);
 
-        // Read initial state
-        const state = await invoke<AllStripsState>("vm_get_all_strips");
-        if (cancelled) return;
-        setChannels((prev) => {
-          const next = new Map(prev);
-          for (const s of state.strips) {
-            next.set(s.strip, { gain: s.gain, muted: s.muted });
-          }
-          return next;
-        });
+        if (status.state === "connected") {
+          markConnected();
+          const state = await invoke<AllStripsState>("vm_get_all_strips");
+          if (cancelled) return;
+          applyStrips(state.strips);
+        } else {
+          // Not a failure: Voicemeeter isn't up yet. The Rust poller stays alive
+          // and will emit `vm:connection` the moment the engine appears, so there
+          // is nothing to retry from here.
+          setConnection("waiting");
+        }
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (cancelled) return;
+        setError(String(e));
+        setConnection("error");
+        // No API handle means no poller, so nothing else can recover. Retry slowly.
+        retryTimer = window.setTimeout(attempt, ERROR_RETRY_MS);
       }
     }
 
-    connect();
+    attempt();
+
+    const unlistenConn = listen<VmConnectionPayload>("vm:connection", (event) => {
+      if (cancelled) return;
+      if (event.payload.state === "connected") {
+        markConnected();
+        // Resync gains/mutes — they may have changed while we were disconnected
+        // (an engine restart re-reads Voicemeeter's own config).
+        invoke<AllStripsState>("vm_get_all_strips")
+          .then((state) => { if (!cancelled) applyStrips(state.strips); })
+          .catch(() => {});
+      } else {
+        setConnection("waiting");
+      }
+    });
 
     const unlisten = listen<AllStripsState>("vm:state-update", (event) => {
-      setChannels((prev) => {
-        const next = new Map(prev);
-        for (const s of event.payload.strips) {
-          // Don't overwrite a strip the user is currently dragging
-          if (!dragging.current.has(s.strip)) {
-            next.set(s.strip, { gain: s.gain, muted: s.muted });
-          }
-        }
-        return next;
-      });
+      applyStrips(event.payload.strips);
     });
 
     const unlistenLevels = listen<AllStripLevels>("vm:levels", (event) => {
@@ -131,12 +181,14 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
 
     return () => {
       cancelled = true;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+      unlistenConn.then((fn) => fn());
       unlisten.then((fn) => fn());
       unlistenLevels.then((fn) => fn());
       unlistenBusLevels.then((fn) => fn());
       invoke("vm_logout").catch(() => {});
     };
-  }, []);
+  }, [applyStrips]);
 
   const setGain = useCallback(async (strip: number, value: number) => {
     setChannels((prev) => {
@@ -174,5 +226,24 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
     dragging.current.delete(strip);
   }, []);
 
-  return { connected, error, channels, levels, busLevels, busGains, setGain, setMute, startDragging, stopDragging };
+  /** Launch Voicemeeter Banana. Only ever called from an explicit user action. */
+  const launchVoicemeeter = useCallback(async () => {
+    await invoke("vm_run_voicemeeter");
+  }, []);
+
+  return {
+    connection,
+    connected: connection === "connected",
+    everConnected,
+    error,
+    channels,
+    levels,
+    busLevels,
+    busGains,
+    setGain,
+    setMute,
+    startDragging,
+    stopDragging,
+    launchVoicemeeter,
+  };
 }

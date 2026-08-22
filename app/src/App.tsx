@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { A1Device } from "./config";
 import { useVoicemeeter } from "./hooks/useVoicemeeter";
 import { useAccentColor } from "./hooks/useAccentColor";
@@ -12,6 +13,7 @@ import Titlebar from "./components/Titlebar";
 import Fader from "./components/Fader";
 import BackgroundLayer from "./components/BackgroundLayer";
 import SettingsPanel from "./components/SettingsPanel";
+import ConnectionOverlay from "./components/ConnectionOverlay";
 
 export default function App() {
   const { style, saveStyle, loaded: styleLoaded } = useStyleSettings();
@@ -79,9 +81,37 @@ export default function App() {
     }
   }, [bgProps.isAcrylic, focused, styleLoaded]);
 
+  // Keep the OS always-on-top flag in sync with the saved preference. Reads from
+  // `style` rather than `effectiveSettings` so live style previews can't unpin the
+  // window as a side effect.
+  useEffect(() => {
+    if (!styleLoaded) return;
+    getCurrentWindow().setAlwaysOnTop(style.alwaysOnTop).catch(() => {});
+  }, [style.alwaysOnTop, styleLoaded]);
+
+  const togglePinned = () => {
+    saveStyle({ ...style, alwaysOnTop: !style.alwaysOnTop });
+  };
+
   const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded, needsOutputSetup, setNeedsOutputSetup } = useChannelConfig();
-  const { connected, error, channels, levels, busGains, setGain, setMute, startDragging, stopDragging } =
-    useVoicemeeter(channelConfigs);
+  const {
+    connection,
+    connected,
+    everConnected,
+    error,
+    channels,
+    levels,
+    busGains,
+    setGain,
+    setMute,
+    startDragging,
+    stopDragging,
+    launchVoicemeeter,
+  } = useVoicemeeter(channelConfigs);
+
+  // A drop after we've been live (engine restart, device switch) is transient —
+  // show it in the titlebar rather than blanking the window.
+  const reconnecting = everConnected && connection !== "connected";
   const [selectedA1, setSelectedA1] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -145,6 +175,9 @@ export default function App() {
         onSettingsClick={() => setSettingsOpen(true)}
         busGain={busGains.get(0) ?? 0}
         showOutputLevel={effectiveSettings.showOutputLevel}
+        reconnecting={reconnecting}
+        pinned={style.alwaysOnTop}
+        onPinToggle={togglePinned}
       />
 
       {/* Channel faders */}
@@ -200,14 +233,13 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
       />
 
-      {/* Connection error overlay */}
-      {error && !connected && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/70 rounded-[6px] p-4">
-          <div className="text-center text-white/90 text-[clamp(0.6rem,2vw,0.85rem)]">
-            <p className="font-bold mb-2">Connection Failed</p>
-            <p className="text-white/60 text-[clamp(0.5rem,1.5vw,0.7rem)]">{error}</p>
-          </div>
-        </div>
+      {/* Cold-start gate — only until the first successful connection */}
+      {!everConnected && !connected && (
+        <ConnectionOverlay
+          connection={connection}
+          error={error}
+          onLaunch={launchVoicemeeter}
+        />
       )}
     </div>
   );

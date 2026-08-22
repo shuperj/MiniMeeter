@@ -1805,7 +1805,7 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "minimeeter"
-version = "1.0.2"
+version = "1.0.4"
 dependencies = [
  "libloading 0.8.9",
  "serde",

@@ -50,6 +50,7 @@ pub fn run() {
         .manage(VmState {
             api: Mutex::new(None),
             polling: Arc::new(AtomicBool::new(false)),
+            connected: Arc::new(AtomicBool::new(false)),
         })
         .manage(ShortcutMap {
             map: Mutex::new(HashMap::new()),
@@ -84,6 +85,8 @@ pub fn run() {
             commands::vm_set_a1_device,
             commands::vm_get_a1_device,
             commands::vm_restart_engine,
+            commands::vm_run_voicemeeter,
+            commands::vm_list_output_devices,
             commands::get_accent_color,
             commands::set_acrylic,
             commands::vm_sync_shortcuts,
