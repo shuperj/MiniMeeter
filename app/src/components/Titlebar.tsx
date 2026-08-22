@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import type { A1Device } from "../config";
+import type { WindowPreset } from "../types/style";
 import { invoke } from "@tauri-apps/api/core";
 
 interface TitlebarProps {
@@ -14,6 +16,8 @@ interface TitlebarProps {
   reconnecting?: boolean;
   pinned: boolean;
   onPinToggle: () => void;
+  /** Sizes offered when right-clicking the minimize button. */
+  windowPresets: WindowPreset[];
 }
 
 function formatDb(v: number): string {
@@ -22,10 +26,38 @@ function formatDb(v: number): string {
   return `${sign}${String(Math.abs(rounded)).padStart(2, "0")}dB`;
 }
 
-export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, busGain, showOutputLevel, reconnecting, pinned, onPinToggle }: TitlebarProps) {
+export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, busGain, showOutputLevel, reconnecting, pinned, onPinToggle, windowPresets }: TitlebarProps) {
   const appWindow = getCurrentWindow();
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false);
+  const presetMenuRef = useRef<HTMLDivElement>(null);
+
+  // Dismiss the preset menu on outside click or Escape.
+  useEffect(() => {
+    if (!presetMenuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!presetMenuRef.current?.contains(e.target as Node)) setPresetMenuOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPresetMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [presetMenuOpen]);
+
+  const applyPreset = async (preset: WindowPreset) => {
+    setPresetMenuOpen(false);
+    try {
+      await appWindow.setSize(new LogicalSize(preset.width, preset.height));
+    } catch {
+      // Nothing useful to do — the window simply stays its current size.
+    }
+  };
 
   const handleA1Change = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const idx = Number(e.target.value);
@@ -166,13 +198,47 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
 
       {/* Window controls */}
       <div className="flex items-center gap-[2px]">
-        <button
-          className="w-[clamp(16px,4vw,28px)] h-[clamp(16px,4dvh,28px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer text-[clamp(0.5rem,1.5vw,0.7rem)] hover:bg-white/20"
-          style={{ color: "var(--accent-fg)", backgroundColor: "transparent" }}
-          onClick={() => appWindow.minimize()}
-        >
-          ─
-        </button>
+        {/* Minimize — right-click opens the window-size presets */}
+        <div className="relative" ref={presetMenuRef}>
+          <button
+            className="w-[clamp(16px,4vw,28px)] h-[clamp(16px,4dvh,28px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer text-[clamp(0.5rem,1.5vw,0.7rem)] hover:bg-white/20"
+            style={{ color: "var(--accent-fg)", backgroundColor: "transparent" }}
+            onClick={() => appWindow.minimize()}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setPresetMenuOpen((v) => !v);
+            }}
+            title="Minimize (right-click for window sizes)"
+          >
+            ─
+          </button>
+
+          {presetMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 min-w-[clamp(96px,26vw,150px)] rounded-[4px] border border-white/15 bg-[#1a1a1a]/95 py-1 shadow-lg">
+              <div className="px-2 pb-1 text-[clamp(0.45rem,1.3vw,0.6rem)] uppercase tracking-wide text-white/35">
+                Window size
+              </div>
+              {windowPresets.length === 0 ? (
+                <div className="px-2 py-1 text-[clamp(0.5rem,1.5vw,0.65rem)] text-white/40">
+                  None — add some in Settings
+                </div>
+              ) : (
+                windowPresets.map((preset, i) => (
+                  <button
+                    key={`${preset.name}-${i}`}
+                    className="w-full text-left px-2 py-[3px] bg-transparent border-none cursor-pointer text-[clamp(0.5rem,1.5vw,0.65rem)] text-white/80 hover:bg-white/10 flex items-center justify-between gap-2"
+                    onClick={() => applyPreset(preset)}
+                  >
+                    <span className="truncate">{preset.name}</span>
+                    <span className="tabular-nums text-white/40 shrink-0">
+                      {preset.width}x{preset.height}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
         <button
           className="w-[clamp(16px,4vw,28px)] h-[clamp(16px,4dvh,28px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer text-[clamp(0.5rem,1.5vw,0.7rem)] hover:bg-red-500/80"
           style={{ color: "var(--accent-fg)", backgroundColor: "transparent" }}

@@ -1,4 +1,5 @@
-import type { StyleSettings } from "../../types/style";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { StyleSettings, WindowPreset } from "../../types/style";
 import { DEFAULT_STYLE_SETTINGS } from "../../types/style";
 import WindowStateStyleEditor from "./WindowStateStyleEditor";
 
@@ -23,6 +24,36 @@ export default function StyleTab({
 }: StyleTabProps) {
   const update = (patch: Partial<StyleSettings>) => {
     onChange({ ...draft, ...patch });
+  };
+
+  const presets: WindowPreset[] = draft.windowPresets ?? [];
+
+  const updatePreset = (idx: number, patch: Partial<WindowPreset>) => {
+    update({ windowPresets: presets.map((p, i) => (i === idx ? { ...p, ...patch } : p)) });
+  };
+
+  const removePreset = (idx: number) => {
+    update({ windowPresets: presets.filter((_, i) => i !== idx) });
+  };
+
+  const addPreset = () => {
+    update({ windowPresets: [...presets, { name: "New size", width: 420, height: 340 }] });
+  };
+
+  /** Snap a preset to whatever size the window is right now — far easier than
+   *  guessing pixel values by hand. */
+  const captureCurrentSize = async (idx: number) => {
+    try {
+      const win = getCurrentWindow();
+      const [size, scale] = await Promise.all([win.innerSize(), win.scaleFactor()]);
+      const logical = size.toLogical(scale);
+      updatePreset(idx, {
+        width: Math.round(logical.width),
+        height: Math.round(logical.height),
+      });
+    } catch {
+      // Leave the preset untouched if the window won't report its size.
+    }
   };
 
   return (
@@ -129,6 +160,82 @@ export default function StyleTab({
             Show A1 output level
           </label>
         </div>
+      </div>
+
+      {/* Global opacity */}
+      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
+        <span className={`${medText} font-semibold text-white/80`}>Global Opacity</span>
+        <div className={`flex items-center gap-[clamp(4px,1vw,8px)] ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
+          <input
+            type="range"
+            min="0.2"
+            max="1"
+            step="0.01"
+            value={draft.globalOpacity ?? 1}
+            onChange={(e) => update({ globalOpacity: Number(e.target.value) })}
+            onDoubleClick={() => update({ globalOpacity: 1 })}
+            className="flex-1 min-w-[clamp(40px,10vw,80px)] accent-[var(--accent)] cursor-pointer"
+          />
+          <span className={`${smallText} text-white/60 tabular-nums w-[4ch] text-right`}>
+            {Math.round((draft.globalOpacity ?? 1) * 100)}%
+          </span>
+        </div>
+        <span className={`${smallText} text-white/35 pl-[clamp(6px,1.5vw,12px)]`}>
+          Fades the whole window. The visualizer slider only affects the animation.
+        </span>
+      </div>
+
+      {/* Window size presets */}
+      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
+        <span className={`${medText} font-semibold text-white/80`}>Window Sizes</span>
+        <span className={`${smallText} text-white/35 pl-[clamp(6px,1.5vw,12px)]`}>
+          Right-click the minimize button to switch between these.
+        </span>
+        {presets.map((preset, idx) => (
+          <div key={idx} className="flex flex-wrap items-center gap-[clamp(3px,0.8vw,6px)] pl-[clamp(6px,1.5vw,12px)]">
+            <input
+              className={`${inputCls} ${smallText} px-[clamp(3px,0.5vw,6px)] py-[1px] w-[clamp(56px,14vw,96px)]`}
+              value={preset.name}
+              onChange={(e) => updatePreset(idx, { name: e.target.value })}
+              placeholder="Name"
+            />
+            <input
+              type="number"
+              min="200"
+              className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(34px,8vw,52px)] text-center`}
+              value={preset.width}
+              onChange={(e) => updatePreset(idx, { width: Number(e.target.value) })}
+            />
+            <span className="text-white/40">x</span>
+            <input
+              type="number"
+              min="275"
+              className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(34px,8vw,52px)] text-center`}
+              value={preset.height}
+              onChange={(e) => updatePreset(idx, { height: Number(e.target.value) })}
+            />
+            <button
+              className={`${inputCls} ${smallText} px-[clamp(3px,0.5vw,6px)] py-[1px] cursor-pointer text-white/70`}
+              onClick={() => captureCurrentSize(idx)}
+              title="Set to the window's current size"
+            >
+              Use current
+            </button>
+            <button
+              className="ml-auto text-red-400/70 hover:text-red-400 bg-transparent border-none cursor-pointer text-[clamp(0.6rem,1.8vw,0.8rem)] p-0"
+              onClick={() => removePreset(idx)}
+              title="Remove preset"
+            >
+              x
+            </button>
+          </div>
+        ))}
+        <button
+          className={`flex items-center justify-center gap-1 bg-white/10 hover:bg-white/15 border border-dashed border-white/20 rounded-[4px] ${smallText} text-white/70 py-[clamp(2px,0.5dvh,5px)] cursor-pointer ml-[clamp(6px,1.5vw,12px)]`}
+          onClick={addPreset}
+        >
+          + Add Window Size
+        </button>
       </div>
 
       {/* Background */}

@@ -388,6 +388,47 @@ pub fn set_acrylic(window_state: State<WindowState>, enabled: bool) -> Result<()
     Ok(())
 }
 
+/// Set the opacity of the whole window, chrome and native backdrop included.
+///
+/// Tauri 2.10 exposes no opacity API, so this goes through the Win32 layered-window
+/// attribute directly. CSS opacity would only fade webview content and leave the
+/// acrylic backdrop fully opaque behind it, which is exactly the mismatch this is
+/// meant to fix. Clamped so the window can never be made completely invisible.
+#[tauri::command]
+pub fn set_window_opacity(window_state: State<WindowState>, opacity: f64) -> Result<(), String> {
+    let guard = window_state.window.lock().map_err(|e| e.to_string())?;
+    let window = guard.as_ref().ok_or("No window")?;
+
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::COLORREF;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE,
+            LWA_ALPHA, WS_EX_LAYERED,
+        };
+
+        // Tauri links a newer `windows` crate than this one, so its HWND is a
+        // distinct type. Bridge through the raw pointer both versions wrap.
+        let raw = window.hwnd().map_err(|e| e.to_string())?;
+        let hwnd = windows::Win32::Foundation::HWND(raw.0 as _);
+        let alpha = (opacity.clamp(0.2, 1.0) * 255.0).round() as u8;
+
+        unsafe {
+            let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            if ex_style & (WS_EX_LAYERED.0 as isize) == 0 {
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED.0 as isize);
+            }
+            SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    let _ = opacity;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn vm_sync_shortcuts(
     app: AppHandle,

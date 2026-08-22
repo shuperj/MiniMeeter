@@ -93,6 +93,13 @@ export default function App() {
     saveStyle({ ...style, alwaysOnTop: !style.alwaysOnTop });
   };
 
+  // Whole-window opacity. Uses effectiveSettings so dragging the slider in
+  // Settings previews live, unlike the pin which must not follow previews.
+  useEffect(() => {
+    if (!styleLoaded) return;
+    invoke("set_window_opacity", { opacity: effectiveSettings.globalOpacity ?? 1 }).catch(() => {});
+  }, [effectiveSettings.globalOpacity, styleLoaded]);
+
   const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded, needsOutputSetup, setNeedsOutputSetup } = useChannelConfig();
   const {
     connection,
@@ -178,6 +185,7 @@ export default function App() {
         reconnecting={reconnecting}
         pinned={style.alwaysOnTop}
         onPinToggle={togglePinned}
+        windowPresets={effectiveSettings.windowPresets ?? []}
       />
 
       {/* Channel faders */}
@@ -207,6 +215,7 @@ export default function App() {
                 onMuteToggle={(m) => setMute(ch.strip, m)}
                 onDragStart={() => startDragging(ch.strip)}
                 onDragEnd={() => stopDragging(ch.strip)}
+                defaultDb={ch.defaultDb}
               />
             );
           })}

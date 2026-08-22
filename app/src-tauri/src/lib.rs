@@ -89,6 +89,7 @@ pub fn run() {
             commands::vm_list_output_devices,
             commands::get_accent_color,
             commands::set_acrylic,
+            commands::set_window_opacity,
             commands::vm_sync_shortcuts,
         ])
         .run(tauri::generate_context!())

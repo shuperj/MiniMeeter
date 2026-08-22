@@ -1,6 +1,6 @@
 [package]
 name = "minimeeter"
-version = "1.0.4"
+version = "1.0.5"
 edition = "2021"
 
 [lib]
@@ -26,6 +26,7 @@ features = [
   "UI_ViewManagement",
   "Win32_Graphics_Dwm",
   "Win32_Foundation",
+  "Win32_UI_WindowsAndMessaging",
 ]
 
 [profile.release]

@@ -33,17 +33,46 @@ const deviceKey = (d: { driver: string; name: string }) => `${d.driver}|${d.name
 const autoDisplay = (d: { driver: string; name: string }) =>
   `${d.driver.toUpperCase()}: ${d.name}`;
 
-/** Convert a KeyboardEvent into a Tauri accelerator string */
-function keyEventToAccelerator(e: KeyboardEvent): string | null {
-  // Ignore lone modifier presses
-  if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return null;
+type ModName = "CmdOrCtrl" | "Shift" | "Alt";
 
-  const parts: string[] = [];
-  if (e.ctrlKey || e.metaKey) parts.push("CmdOrCtrl");
-  if (e.shiftKey) parts.push("Shift");
-  if (e.altKey) parts.push("Alt");
+/** Canonical modifier order, matching how accelerators are written. */
+const MOD_ORDER: ModName[] = ["CmdOrCtrl", "Shift", "Alt"];
+const MOD_LABEL: Record<ModName, string> = {
+  CmdOrCtrl: "Ctrl",
+  Shift: "Shift",
+  Alt: "Alt",
+};
 
-  // Map key names to Tauri accelerator names
+/** Pretty names for keys whose raw token reads badly in the UI. */
+const KEY_LABEL: Record<string, string> = {
+  NumpadAdd: "Num +",
+  NumpadSubtract: "Num -",
+  NumpadMultiply: "Num *",
+  NumpadDivide: "Num /",
+  NumpadDecimal: "Num .",
+  NumpadEnter: "Num Enter",
+  NumpadEqual: "Num =",
+};
+
+function formatKeyLabel(key: string): string {
+  if (!key) return "None";
+  if (KEY_LABEL[key]) return KEY_LABEL[key];
+  const digit = /^Numpad(\d)$/.exec(key);
+  return digit ? `Num ${digit[1]}` : key;
+}
+
+/**
+ * Extract the key token from a KeyboardEvent.
+ *
+ * Numpad keys MUST come from e.code. e.key reports "1" with NumLock on (which
+ * parses as Digit1, the main-row key) and "End" with NumLock off — so using
+ * e.key binds the wrong physical key either way. The e.code values
+ * (Numpad0-9, NumpadAdd, NumpadEnter, ...) are exactly the tokens
+ * global-hotkey's parser accepts.
+ */
+function eventToKeyToken(e: KeyboardEvent): string | null {
+  if (e.code.startsWith("Numpad")) return e.code;
+
   let key = e.key;
   if (key === " ") key = "Space";
   else if (key.length === 1) key = key.toUpperCase();
@@ -52,9 +81,49 @@ function keyEventToAccelerator(e: KeyboardEvent): string | null {
   else if (key === "ArrowLeft") key = "Left";
   else if (key === "ArrowRight") key = "Right";
   // F1-F24, Escape, Tab, etc. are already correct casing from e.key
+  return key || null;
+}
 
-  parts.push(key);
-  return parts.join("+");
+/** Split an accelerator into its modifiers and key. */
+function parseHotkey(accel: string): { mods: ModName[]; key: string } {
+  const mods: ModName[] = [];
+  let key = "";
+  for (const raw of (accel || "").split("+")) {
+    const part = raw.trim();
+    if (!part) continue;
+    if (part === "CmdOrCtrl" || part === "Ctrl" || part === "Control") {
+      if (!mods.includes("CmdOrCtrl")) mods.push("CmdOrCtrl");
+    } else if (part === "Shift") {
+      if (!mods.includes("Shift")) mods.push("Shift");
+    } else if (part === "Alt" || part === "Option") {
+      if (!mods.includes("Alt")) mods.push("Alt");
+    } else {
+      key = part;
+    }
+  }
+  return { mods, key };
+}
+
+/** Recombine modifiers and key. A modifier alone is not a valid hotkey. */
+function buildHotkey(mods: ModName[], key: string): string {
+  if (!key) return "";
+  return [...MOD_ORDER.filter((m) => mods.includes(m)), key].join("+");
+}
+
+/** Convert a KeyboardEvent into a Tauri accelerator string */
+function keyEventToAccelerator(e: KeyboardEvent): string | null {
+  // Ignore lone modifier presses
+  if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return null;
+
+  const key = eventToKeyToken(e);
+  if (!key) return null;
+
+  const mods: ModName[] = [];
+  if (e.ctrlKey || e.metaKey) mods.push("CmdOrCtrl");
+  if (e.shiftKey) mods.push("Shift");
+  if (e.altKey) mods.push("Alt");
+
+  return buildHotkey(mods, key);
 }
 
 export default function SettingsPanel({
@@ -84,6 +153,8 @@ export default function SettingsPanel({
 
   // Hotkey recording state: index of channel currently being recorded, or null
   const [recordingIdx, setRecordingIdx] = useState<number | null>(null);
+  // Only one channel's details open at a time — the row was too dense flat.
+  const [expandedCh, setExpandedCh] = useState<number | null>(null);
   const recordingRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -182,11 +253,21 @@ export default function SettingsPanel({
     setChDraft((prev) => prev.map((ch, i) => (i === idx ? { ...ch, [field]: value } : ch)));
   };
 
+  /** Add or remove one modifier on an already-recorded hotkey. */
+  const toggleHotkeyMod = (idx: number, mod: ModName) => {
+    const { mods, key } = parseHotkey(chDraft[idx]?.muteHotkey ?? "");
+    if (!key) return;
+    const next = mods.includes(mod) ? mods.filter((m) => m !== mod) : [...mods, mod];
+    updateChField(idx, "muteHotkey", buildHotkey(next, key));
+  };
+
   const removeChannel = (idx: number) => {
+    setExpandedCh(null);
     setChDraft((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const moveChannel = (idx: number, dir: -1 | 1) => {
+    setExpandedCh(null);
     setChDraft((prev) => {
       const next = [...prev];
       const target = idx + dir;
@@ -282,6 +363,7 @@ export default function SettingsPanel({
   const inputCls = "bg-white/10 border border-white/20 rounded-[3px] text-white/90 outline-none focus:border-[var(--accent)]";
   const smallText = "text-[clamp(0.5rem,1.5vw,0.65rem)]";
   const medText = "text-[clamp(0.55rem,1.8vw,0.75rem)]";
+  const rowLabelCls = "w-[clamp(34px,9vw,52px)] shrink-0 text-white/40";
 
   return (
     <AnimatePresence onExitComplete={() => {}}>
@@ -332,135 +414,204 @@ export default function SettingsPanel({
             <div className="flex-1 overflow-y-auto flex flex-col gap-[clamp(4px,1dvh,8px)] min-h-0">
               {tab === "channels" && (
                 <>
-                  {chDraft.map((ch, idx) => (
-                    <div
-                      key={idx}
-                      className="flex flex-wrap items-center gap-[clamp(4px,1vw,8px)] bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)]"
-                    >
-                      {/* Reorder arrows */}
-                      <div className="flex flex-col gap-0">
-                        <button
-                          className="bg-transparent border-none cursor-pointer text-white/40 hover:text-white/80 text-[clamp(0.5rem,1.2vw,0.65rem)] leading-none p-0 disabled:opacity-20 disabled:cursor-default"
-                          onClick={() => moveChannel(idx, -1)}
-                          disabled={idx === 0}
-                          title="Move up"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          className="bg-transparent border-none cursor-pointer text-white/40 hover:text-white/80 text-[clamp(0.5rem,1.2vw,0.65rem)] leading-none p-0 disabled:opacity-20 disabled:cursor-default"
-                          onClick={() => moveChannel(idx, 1)}
-                          disabled={idx === chDraft.length - 1}
-                          title="Move down"
-                        >
-                          ▼
-                        </button>
-                      </div>
+                  {chDraft.map((ch, idx) => {
+                    const expanded = expandedCh === idx;
+                    const clampedDefault = Math.max(ch.minDb, Math.min(ch.maxDb, ch.defaultDb));
+                    const defaultOutOfRange = ch.defaultDb !== clampedDefault;
+                    const { mods, key } = parseHotkey(ch.muteHotkey ?? "");
+                    const bareHotkey = !!key && mods.length === 0;
 
-                      {/* Label */}
-                      <input
-                        className={`${inputCls} ${medText} px-[clamp(3px,0.5vw,6px)] py-[2px] w-[clamp(48px,12vw,80px)]`}
-                        value={ch.label}
-                        onChange={(e) => updateChField(idx, "label", e.target.value)}
-                        placeholder="Label"
-                      />
-
-                      {/* Strip selector */}
-                      <select
-                        className={`${inputCls} ${smallText} px-[clamp(2px,0.3vw,4px)] py-[2px] cursor-pointer`}
-                        style={{ colorScheme: "dark" }}
-                        value={ch.strip}
-                        onChange={(e) => updateChField(idx, "strip", Number(e.target.value))}
-                      >
-                        {AVAILABLE_STRIPS.map((s) => (
-                          <option key={s} value={s}>
-                            Strip {s} — {STRIP_LABELS[s]}
-                          </option>
-                        ))}
-                      </select>
-
-                      {/* Mute toggle */}
-                      <label className={`flex items-center gap-1 ${smallText} text-white/70 cursor-pointer select-none`}>
-                        <input
-                          type="checkbox"
-                          checked={ch.hasMute}
-                          onChange={(e) => updateChField(idx, "hasMute", e.target.checked)}
-                          className="accent-[var(--accent)] cursor-pointer"
-                        />
-                        Mute
-                      </label>
-
-                      {/* Mute hotkey */}
-                      {ch.hasMute && (
-                        <div className={`flex items-center gap-1 ${smallText} text-white/60`}>
-                          <button
-                            className={`${inputCls} ${smallText} px-[clamp(3px,0.5vw,6px)] py-[1px] cursor-pointer min-w-[clamp(50px,10vw,90px)] text-center`}
-                            style={recordingIdx === idx ? { borderColor: "var(--accent)", color: "var(--accent)" } : undefined}
-                            onClick={() => setRecordingIdx(recordingIdx === idx ? null : idx)}
-                            title="Click to record hotkey, Escape to cancel"
-                          >
-                            {recordingIdx === idx ? "Press key..." : ch.muteHotkey || "None"}
-                          </button>
-                          {ch.muteHotkey && (
+                    return (
+                      <div key={idx} className="bg-white/5 rounded-[4px] overflow-hidden shrink-0">
+                        {/* Compact header — identity only, so the list stays scannable */}
+                        <div className="flex items-center gap-[clamp(3px,0.8vw,6px)] p-[clamp(4px,1vw,8px)]">
+                          <div className="flex flex-col gap-0 shrink-0">
                             <button
-                              className="text-white/40 hover:text-white/70 bg-transparent border-none cursor-pointer text-[clamp(0.5rem,1.2vw,0.6rem)] p-0"
-                              onClick={() => updateChField(idx, "muteHotkey", "")}
-                              title="Clear hotkey"
+                              className="bg-transparent border-none cursor-pointer text-white/40 hover:text-white/80 text-[clamp(0.5rem,1.2vw,0.65rem)] leading-none p-0 disabled:opacity-20 disabled:cursor-default"
+                              onClick={() => moveChannel(idx, -1)}
+                              disabled={idx === 0}
+                              title="Move up"
                             >
-                              ✕
+                              ▲
                             </button>
-                          )}
+                            <button
+                              className="bg-transparent border-none cursor-pointer text-white/40 hover:text-white/80 text-[clamp(0.5rem,1.2vw,0.65rem)] leading-none p-0 disabled:opacity-20 disabled:cursor-default"
+                              onClick={() => moveChannel(idx, 1)}
+                              disabled={idx === chDraft.length - 1}
+                              title="Move down"
+                            >
+                              ▼
+                            </button>
+                          </div>
+
+                          <input
+                            className={`${inputCls} ${medText} px-[clamp(3px,0.5vw,6px)] py-[2px] w-[clamp(48px,12vw,80px)]`}
+                            value={ch.label}
+                            onChange={(e) => updateChField(idx, "label", e.target.value)}
+                            placeholder="Label"
+                          />
+
+                          <select
+                            className={`${inputCls} ${smallText} px-[clamp(2px,0.3vw,4px)] py-[2px] cursor-pointer`}
+                            style={{ colorScheme: "dark" }}
+                            value={ch.strip}
+                            onChange={(e) => updateChField(idx, "strip", Number(e.target.value))}
+                          >
+                            {AVAILABLE_STRIPS.map((s) => (
+                              <option key={s} value={s}>
+                                Strip {s} — {STRIP_LABELS[s]}
+                              </option>
+                            ))}
+                          </select>
+
+                          <label className={`flex items-center gap-1 ${smallText} text-white/70 cursor-pointer select-none shrink-0`}>
+                            <input
+                              type="checkbox"
+                              checked={ch.hasMute}
+                              onChange={(e) => updateChField(idx, "hasMute", e.target.checked)}
+                              className="accent-[var(--accent)] cursor-pointer"
+                            />
+                            Mute
+                          </label>
+
+                          <button
+                            className={`ml-auto ${smallText} bg-transparent border-none cursor-pointer text-white/50 hover:text-white/90 px-1 shrink-0`}
+                            onClick={() => setExpandedCh(expanded ? null : idx)}
+                            aria-expanded={expanded}
+                            title={expanded ? "Hide settings" : "More settings"}
+                          >
+                            {expanded ? "▲" : "▼"}
+                          </button>
+
+                          <button
+                            className="text-red-400/70 hover:text-red-400 bg-transparent border-none cursor-pointer text-[clamp(0.6rem,1.8vw,0.8rem)] p-0 shrink-0"
+                            onClick={() => removeChannel(idx)}
+                            title="Remove channel"
+                          >
+                            ✕
+                          </button>
                         </div>
-                      )}
 
-                      {/* dB range */}
-                      <div className={`flex items-center gap-1 ${smallText} text-white/60`}>
-                        <input
-                          type="number"
-                          className={`${inputCls} ${smallText} w-[clamp(30px,7vw,44px)] px-1 py-[1px] text-center`}
-                          value={ch.minDb}
-                          onChange={(e) => updateChField(idx, "minDb", Number(e.target.value))}
-                        />
-                        <span>to</span>
-                        <input
-                          type="number"
-                          className={`${inputCls} ${smallText} w-[clamp(30px,7vw,44px)] px-1 py-[1px] text-center`}
-                          value={ch.maxDb}
-                          onChange={(e) => updateChField(idx, "maxDb", Number(e.target.value))}
-                        />
-                        <span>dB</span>
+                        {/* Details — collapsed by default; this is where the row
+                            was getting unreadable. */}
+                        {expanded && (
+                          <div className="border-t border-white/10 px-[clamp(6px,1.5vw,12px)] py-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(3px,0.8dvh,6px)]">
+                            {/* Range */}
+                            <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
+                              <span className={rowLabelCls}>Range</span>
+                              <input
+                                type="number"
+                                className={`${inputCls} ${smallText} w-[clamp(30px,7vw,44px)] px-1 py-[1px] text-center`}
+                                value={ch.minDb}
+                                onChange={(e) => updateChField(idx, "minDb", Number(e.target.value))}
+                              />
+                              <span>to</span>
+                              <input
+                                type="number"
+                                className={`${inputCls} ${smallText} w-[clamp(30px,7vw,44px)] px-1 py-[1px] text-center`}
+                                value={ch.maxDb}
+                                onChange={(e) => updateChField(idx, "maxDb", Number(e.target.value))}
+                              />
+                              <span>dB</span>
+                            </div>
+
+                            {/* Default — what a double-click on the fader snaps to */}
+                            <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
+                              <span className={rowLabelCls}>Default</span>
+                              <input
+                                type="number"
+                                className={`${inputCls} ${smallText} w-[clamp(30px,7vw,44px)] px-1 py-[1px] text-center`}
+                                value={ch.defaultDb}
+                                onChange={(e) => updateChField(idx, "defaultDb", Number(e.target.value))}
+                              />
+                              <span>dB</span>
+                              {defaultOutOfRange && (
+                                <span
+                                  className="text-amber-300/80 cursor-help"
+                                  title={`Outside this channel's range — a double-click will land on ${clampedDefault} dB instead.`}
+                                >
+                                  ⚠
+                                </span>
+                              )}
+                              <span className="text-white/35">double-click the fader</span>
+                            </div>
+
+                            {/* Meter scale — double-click slider to reset to 1x */}
+                            <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
+                              <span className={rowLabelCls}>Meter</span>
+                              <input
+                                type="range"
+                                min="0.5"
+                                max="10"
+                                step="0.25"
+                                value={ch.levelScale ?? 1}
+                                onChange={(e) => updateChField(idx, "levelScale", Number(e.target.value))}
+                                onDoubleClick={() => updateChField(idx, "levelScale", 1)}
+                                className="w-[clamp(40px,10vw,64px)] accent-[var(--accent)] cursor-pointer"
+                              />
+                              <span className="tabular-nums w-[3ch] text-right">{(ch.levelScale ?? 1).toFixed(1)}x</span>
+                            </div>
+
+                            {/* Mute hotkey */}
+                            {ch.hasMute && (
+                              <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
+                                <span className={rowLabelCls}>Hotkey</span>
+                                {MOD_ORDER.map((mod) => {
+                                  const on = mods.includes(mod);
+                                  return (
+                                    <button
+                                      key={mod}
+                                      className={`${inputCls} ${smallText} px-[clamp(2px,0.4vw,5px)] py-[1px] cursor-pointer disabled:opacity-30 disabled:cursor-default`}
+                                      style={
+                                        on
+                                          ? { backgroundColor: "var(--accent)", color: "var(--accent-fg)", borderColor: "var(--accent)" }
+                                          : undefined
+                                      }
+                                      onClick={() => toggleHotkeyMod(idx, mod)}
+                                      disabled={!key}
+                                      aria-pressed={on}
+                                      title={key ? `Toggle ${MOD_LABEL[mod]}` : "Record a key first"}
+                                    >
+                                      {MOD_LABEL[mod]}
+                                    </button>
+                                  );
+                                })}
+                                <button
+                                  className={`${inputCls} ${smallText} px-[clamp(3px,0.5vw,6px)] py-[1px] cursor-pointer min-w-[clamp(50px,10vw,90px)] text-center`}
+                                  style={recordingIdx === idx ? { borderColor: "var(--accent)", color: "var(--accent)" } : undefined}
+                                  onClick={() => setRecordingIdx(recordingIdx === idx ? null : idx)}
+                                  title="Click to record a key, Escape to cancel"
+                                >
+                                  {recordingIdx === idx ? "Press key..." : formatKeyLabel(key)}
+                                </button>
+                                {bareHotkey && (
+                                  <span
+                                    className="text-amber-300/80 cursor-help"
+                                    title={`${formatKeyLabel(key)} is captured system-wide, so it won't reach other apps. Add a modifier to avoid that.`}
+                                  >
+                                    ⚠
+                                  </span>
+                                )}
+                                {ch.muteHotkey && (
+                                  <button
+                                    className="text-white/40 hover:text-white/70 bg-transparent border-none cursor-pointer text-[clamp(0.5rem,1.2vw,0.6rem)] p-0"
+                                    onClick={() => updateChField(idx, "muteHotkey", "")}
+                                    title="Clear hotkey"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-
-                      {/* Level scale — double-click slider to reset to 1x */}
-                      <div className={`flex items-center gap-1 ${smallText} text-white/60`}>
-                        <span className="whitespace-nowrap">Meter</span>
-                        <input
-                          type="range"
-                          min="0.5"
-                          max="10"
-                          step="0.25"
-                          value={ch.levelScale ?? 1}
-                          onChange={(e) => updateChField(idx, "levelScale", Number(e.target.value))}
-                          onDoubleClick={() => updateChField(idx, "levelScale", 1)}
-                          className="w-[clamp(40px,10vw,64px)] accent-[var(--accent)] cursor-pointer"
-                        />
-                        <span className="tabular-nums w-[3ch] text-right">{(ch.levelScale ?? 1).toFixed(1)}x</span>
-                      </div>
-
-                      {/* Remove */}
-                      <button
-                        className="ml-auto text-red-400/70 hover:text-red-400 bg-transparent border-none cursor-pointer text-[clamp(0.6rem,1.8vw,0.8rem)] p-0"
-                        onClick={() => removeChannel(idx)}
-                        title="Remove channel"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {chDraft.length < 5 && (
                     <button
-                      className={`flex items-center justify-center gap-1 bg-white/10 hover:bg-white/15 border border-dashed border-white/20 rounded-[4px] ${medText} text-white/70 py-[clamp(4px,0.8dvh,8px)] cursor-pointer`}
+                      className={`flex items-center justify-center gap-1 bg-white/10 hover:bg-white/15 border border-dashed border-white/20 rounded-[4px] ${medText} text-white/70 py-[clamp(4px,0.8dvh,8px)] cursor-pointer shrink-0`}
                       onClick={addChannel}
                     >
                       + Add Channel

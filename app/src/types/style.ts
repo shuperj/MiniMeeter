@@ -1,5 +1,12 @@
 export type AccentSource = "system" | "custom";
 
+/** A named window size the user can snap to from the titlebar. */
+export interface WindowPreset {
+  name: string;
+  width: number;
+  height: number;
+}
+
 export type BackgroundMode = "solid" | "acrylic" | "visualizer";
 
 export type UnfocusedVisualizerMode = "animated" | "paused";
@@ -34,7 +41,18 @@ export interface StyleSettings {
   showOutputLevel: boolean;
   /** Keep the window above other windows. Toggled by the titlebar pin. */
   alwaysOnTop: boolean;
+  /** Opacity of the entire window, chrome and backdrop included (0.2 - 1). */
+  globalOpacity: number;
+  /** Named window sizes, reachable by right-clicking the minimize button. */
+  windowPresets: WindowPreset[];
 }
+
+/** Sized against the 200x275 minimum in tauri.conf.json. */
+export const DEFAULT_WINDOW_PRESETS: WindowPreset[] = [
+  { name: "Compact", width: 220, height: 300 },
+  { name: "Default", width: 420, height: 340 },
+  { name: "Tall", width: 420, height: 560 },
+];
 
 export const DEFAULT_BACKGROUND_STYLE: BackgroundStyle = {
   backgroundMode: "acrylic",
@@ -55,4 +73,6 @@ export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   background: { ...DEFAULT_BACKGROUND_STYLE },
   showOutputLevel: false,
   alwaysOnTop: false,
+  globalOpacity: 1,
+  windowPresets: [...DEFAULT_WINDOW_PRESETS],
 };

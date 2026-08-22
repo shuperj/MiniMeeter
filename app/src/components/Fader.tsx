@@ -1,10 +1,5 @@
 import { useRef, useCallback, useEffect } from "react";
-import {
-  motion,
-  useTransform,
-  useSpring,
-  type PanInfo,
-} from "framer-motion";
+import { motion, useTransform, useSpring } from "framer-motion";
 import { WHEEL_STEP_DB } from "../config";
 import MuteButton from "./MuteButton";
 
@@ -18,11 +13,16 @@ interface FaderProps {
   level: number;
   levelScale: number;
   meterDecay: number;
+  /** Value this fader snaps to on double-click. */
+  defaultDb: number;
   onChange: (value: number) => void;
   onMuteToggle: (muted: boolean) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
 }
+
+/** Treat two presses this close together as a double-click. */
+const DOUBLE_CLICK_MS = 350;
 
 export default function Fader({
   label,
@@ -34,6 +34,7 @@ export default function Fader({
   level,
   levelScale,
   meterDecay,
+  defaultDb,
   onChange,
   onMuteToggle,
   onDragStart,
@@ -111,20 +112,98 @@ export default function Fader({
   // Fill height tracks the thumb position
   const fillScale = useTransform(springY, [0, 1], [1, 0]);
 
-  const handlePan = useCallback(
-    (_: PointerEvent, info: PanInfo) => {
-      const track = trackRef.current;
-      if (!track) return;
-      const rect = track.getBoundingClientRect();
-      const trackHeight = rect.height;
-      const currentNorm = springY.get();
-      const deltaNorm = info.delta.y / trackHeight;
-      const newNorm = Math.max(0, Math.min(1, currentNorm + deltaNorm));
-      springY.jump(newNorm);
-      const db = max - newNorm * (max - min);
+  // --- Dragging ---
+  //
+  // Pointer capture with a preserved grab offset, rather than framer-motion's
+  // pan gesture. Pan waits for a movement threshold before firing and works in
+  // deltas, which made this feel unresponsive and drifty. Here the whole track
+  // column is a grab surface and the thumb never jumps to the cursor: press
+  // anywhere and it moves relative to where you started, so a plain click can't
+  // yank the level.
+  const drag = useRef<{ pointerId: number; offset: number; startY: number } | null>(null);
+  const lastPressTime = useRef(0);
+  // A quick drag-release-drag must not be mistaken for a double-click, so a
+  // gesture that actually moved disqualifies the next press.
+  const movedDuringDrag = useRef(false);
+
+  const applyNorm = useCallback(
+    (norm: number) => {
+      springY.jump(norm);
+      const db = max - norm * (max - min);
       onChange(Math.round(db * 10) / 10);
     },
     [max, min, onChange, springY],
+  );
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const track = trackRef.current;
+      if (!track) return;
+      const rect = track.getBoundingClientRect();
+      if (rect.height <= 0) return;
+
+      const now = performance.now();
+      const isDoubleClick = now - lastPressTime.current < DOUBLE_CLICK_MS;
+      lastPressTime.current = now;
+
+      if (isDoubleClick) {
+        // Snap to this channel's default. Detected by timing rather than the
+        // dblclick event, because preventDefault below suppresses the
+        // compatibility mouse events that would normally produce it.
+        // The stored default can sit outside the range, so clamp it.
+        const target = Math.max(min, Math.min(max, defaultDb));
+        applyNorm((max - target) / (max - min));
+        return;
+      }
+
+      // Offset from the thumb's current position keeps the grab point steady,
+      // so pressing away from the thumb doesn't yank the level.
+      const thumbY = rect.top + springY.get() * rect.height;
+      drag.current = { pointerId: e.pointerId, offset: e.clientY - thumbY, startY: e.clientY };
+      movedDuringDrag.current = false;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      isDragging.current = true;
+      onDragStart();
+    },
+    [applyNorm, defaultDb, max, min, onDragStart, springY],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const state = drag.current;
+      if (!state || state.pointerId !== e.pointerId) return;
+      const track = trackRef.current;
+      if (!track) return;
+      const rect = track.getBoundingClientRect();
+      if (rect.height <= 0) return;
+
+      if (Math.abs(e.clientY - state.startY) > 3) movedDuringDrag.current = true;
+
+      const norm = Math.max(
+        0,
+        Math.min(1, (e.clientY - state.offset - rect.top) / rect.height),
+      );
+      applyNorm(norm);
+    },
+    [applyNorm],
+  );
+
+  const handlePointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const state = drag.current;
+      if (!state || state.pointerId !== e.pointerId) return;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+      drag.current = null;
+      isDragging.current = false;
+      // Only a stationary press can begin a double-click.
+      if (movedDuringDrag.current) lastPressTime.current = 0;
+      onDragEnd();
+    },
+    [onDragEnd],
   );
 
   const handleWheel = useCallback(
@@ -161,59 +240,67 @@ export default function Fader({
             {formatDb(value)}
           </span>
 
-          {/* Track + thumb */}
+          {/* Grab surface — the full column width, so you never have to hit the
+              thin track or the thumb exactly. */}
           <div
-            ref={trackRef}
-            className="relative w-[clamp(8px,2vw,12px)] flex-1 min-h-[80px] bg-[#2b2b2b] rounded-full cursor-pointer"
+            className="relative flex-1 min-h-[80px] w-full flex justify-center touch-none cursor-grab active:cursor-grabbing"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            title={`Double-click to reset to ${formatDb(Math.max(min, Math.min(max, defaultDb)))}`}
           >
-            {/* Fill from bottom */}
-            <motion.div
-              className="absolute bottom-0 left-0 right-0 rounded-full origin-bottom"
-              style={{
-                scaleY: fillScale,
-                backgroundColor: "var(--accent)",
-                opacity: 0.4,
-                height: "100%",
-              }}
-            />
-
-            {/* Audio level meter — driven by RAF peak-hold loop */}
+            {/* Visual track */}
             <div
-              ref={meterRef}
-              className="absolute bottom-0 left-[15%] right-[15%] rounded-full pointer-events-none"
-              style={{
-                height: "0%",
-                backgroundColor: "var(--accent)",
-                opacity: 0.7,
-              }}
-            />
-
-            {/* Thumb — pentagon pointing right */}
-            <motion.div
-              className="absolute w-[clamp(18px,4.5vw,30px)] h-[clamp(8px,1.5dvh,14px)] cursor-grab active:cursor-grabbing"
-              style={{
-                top: useTransform(springY, (v: number) => `calc(${v * 100}% - clamp(4px, 0.75dvh, 7px))`),
-                right: "35%",
-              }}
-              onPanStart={() => {
-                isDragging.current = true;
-                onDragStart();
-              }}
-              onPan={handlePan}
-              onPanEnd={() => {
-                isDragging.current = false;
-                onDragEnd();
-              }}
+              ref={trackRef}
+              className="relative w-[clamp(8px,2vw,12px)] h-full bg-[#2b2b2b] rounded-full"
             >
-              <svg viewBox="0 0 24 14" className="w-full h-full" style={{ overflow: "visible" }}>
-                <path
-                  d="M 0 0 L 18 0 L 24 7 L 18 14 L 0 14 Z"
-                  fill="var(--accent)"
-                  stroke="white"
-                  strokeWidth="1.5"
-                />
-              </svg>
-            </motion.div>
+              {/* Fill from bottom */}
+              <motion.div
+                className="absolute bottom-0 left-0 right-0 rounded-full origin-bottom pointer-events-none"
+                style={{
+                  scaleY: fillScale,
+                  backgroundColor: "var(--accent)",
+                  opacity: 0.4,
+                  height: "100%",
+                }}
+              />
+
+              {/* Audio level meter — driven by RAF peak-hold loop */}
+              <div
+                ref={meterRef}
+                className="absolute bottom-0 left-[15%] right-[15%] rounded-full pointer-events-none"
+                style={{
+                  height: "0%",
+                  backgroundColor: "var(--accent)",
+                  opacity: 0.7,
+                }}
+              />
+
+              {/* Thumb — pentagon pointing right. Purely visual; the wrapper
+                  above owns all pointer handling. */}
+              <motion.div
+                className="absolute pointer-events-none flex items-center justify-center"
+                style={{
+                  width: "clamp(18px,4.5vw,30px)",
+                  height: "clamp(8px,1.5dvh,14px)",
+                  top: useTransform(
+                    springY,
+                    (v: number) => `calc(${v * 100}% - clamp(4px,0.75dvh,7px))`,
+                  ),
+                  right: "35%",
+                }}
+              >
+                <svg viewBox="0 0 24 14" className="w-full h-full" style={{ overflow: "visible" }}>
+                  <path
+                    d="M 0 0 L 18 0 L 24 7 L 18 14 L 0 14 Z"
+                    fill="var(--accent)"
+                    stroke="white"
+                    strokeWidth="1.5"
+                  />
+                </svg>
+              </motion.div>
+            </div>
           </div>
 
           {/* Mute button */}
