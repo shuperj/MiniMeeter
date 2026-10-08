@@ -59,6 +59,24 @@ export interface BackgroundStyle {
   /** 2-5 "#rrggbb" colors, used when visualizerColorSource is "palette". */
   visualizerPalette: string[];
   unfocusedVisualizerMode: UnfocusedVisualizerMode;
+  /**
+   * Each preset's own strength, reactivity, speed, filters and colours,
+   * stashed when switching away from it (see lib/presetStyles). The live
+   * fields above always hold the current preset's values.
+   */
+  presetStyles: Partial<Record<VisualizerPreset, Partial<PresetStyleFields>>>;
+}
+
+/** The fields of BackgroundStyle that a preset remembers for itself. */
+export interface PresetStyleFields {
+  visualizerOpacity: number;
+  visualizerIntensity: number;
+  visualizerSpeed: number;
+  visualizerFilters: VisualizerFilter[];
+  visualizerCelEdges: CelEdges;
+  visualizerColorSource: VisualizerColorSource;
+  visualizerColor: string;
+  visualizerPalette: string[];
 }
 
 export interface StyleSettings {
@@ -104,6 +122,7 @@ export const DEFAULT_BACKGROUND_STYLE: BackgroundStyle = {
   visualizerColor: "#3a86ff",
   visualizerPalette: DEFAULT_VISUALIZER_PALETTE,
   unfocusedVisualizerMode: "paused",
+  presetStyles: {},
 };
 
 export const DEFAULT_STYLE_SETTINGS: StyleSettings = {

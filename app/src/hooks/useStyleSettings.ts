@@ -4,6 +4,7 @@ import type { StyleSettings, BackgroundStyle } from "../types/style";
 import { DEFAULT_STYLE_SETTINGS, DEFAULT_BACKGROUND_STYLE, DEFAULT_VISUALIZER_PALETTE, VISUALIZER_FPS_OPTIONS } from "../types/style";
 import { normalizePalette } from "../lib/color";
 import { normalizeFilters } from "../lib/visualizerFilter";
+import { normalizePresetStyles } from "../lib/presetStyles";
 
 const STYLE_KEY = "style";
 
@@ -67,6 +68,7 @@ function migrateBackground(raw: any): BackgroundStyle {
   }
 
   bg.visualizerPalette = normalizePalette(bg.visualizerPalette, DEFAULT_VISUALIZER_PALETTE);
+  bg.presetStyles = normalizePresetStyles(bg.presetStyles);
 
   return bg;
 }

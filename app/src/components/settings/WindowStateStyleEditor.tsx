@@ -1,6 +1,8 @@
 import { VISUALIZER_FPS_OPTIONS, type CelEdges, type VisualizerFilter, type VisualizerFps } from "../../types/style";
 import type { BackgroundStyle, BackgroundMode, VisualizerPreset, VisualizerColorSource, UnfocusedVisualizerMode } from "../../types/style";
 import { PALETTE_MAX, PALETTE_MIN } from "../../lib/color";
+import { PRESET_GROUPS, PRESET_LABELS } from "../../lib/visualizerPresets";
+import { switchPreset } from "../../lib/presetStyles";
 import { SettingRow, Segmented, Toggles } from "./SettingsGroup";
 import { sliderCls, sliderValueCls, swatchCls } from "./shared";
 
@@ -15,17 +17,6 @@ const BG_MODES: { value: BackgroundMode; label: string }[] = [
   { value: "solid", label: "Color" },
   { value: "acrylic", label: "Acrylic" },
   { value: "visualizer", label: "Visualizer" },
-];
-
-const VISUALIZER_PRESETS: { value: VisualizerPreset; label: string }[] = [
-  { value: "xmb-smoke", label: "Waves" },
-  { value: "starfield", label: "Starfield" },
-  { value: "matrix-rain", label: "Matrix Rain" },
-  { value: "noise-flow", label: "Noise Flow" },
-  { value: "lava-lamp", label: "Lava Lamp" },
-  { value: "ferrofluid", label: "Ferrofluid" },
-  { value: "disco-ball", label: "Disco Ball" },
-  { value: "pipes", label: "Pipes" },
 ];
 
 const VIZ_COLOR_SOURCES: { value: VisualizerColorSource; label: string }[] = [
@@ -96,15 +87,19 @@ export default function WindowStateStyleEditor({ draft, onChange, smallText, inp
       {/* Visualizer settings: the basics, then an Advanced toggle */}
       {draft.backgroundMode === "visualizer" && (
         <>
-          <SettingRow label="Preset">
+          <SettingRow label="Preset" title="Each preset keeps its own strength, reactivity, speed, filters and colours.">
             <select
               className={selectCls}
               style={{ colorScheme: "dark" }}
               value={draft.visualizerPreset}
-              onChange={(e) => update({ visualizerPreset: e.target.value as VisualizerPreset })}
+              onChange={(e) => onChange(switchPreset(draft, e.target.value as VisualizerPreset))}
             >
-              {VISUALIZER_PRESETS.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
+              {PRESET_GROUPS.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.presets.map((p) => (
+                    <option key={p} value={p}>{PRESET_LABELS[p]}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </SettingRow>
