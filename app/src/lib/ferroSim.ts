@@ -74,9 +74,13 @@ export const FORM_FIELD = 0.5;
 export const COLLAPSE_FIELD = 0.36;
 export const MAX_HEIGHT = 1.2;
 
-/** Spring stiffness and damping (per s²/per s), lightly underdamped. */
-const STIFFNESS = 520;
-const DAMPING = 19;
+/**
+ * Spring stiffness and damping (per s²/per s), lightly underdamped: a kick's
+ * peak lands about 50 ms after the beat, which is as late as it can be
+ * without the spikes reading as behind the music.
+ */
+const STIFFNESS = 850;
+const DAMPING = 24;
 /** Surface tension: pull toward the neighbours' mean height. */
 const COUPLING = 110;
 /** Longest integration step, in seconds. */

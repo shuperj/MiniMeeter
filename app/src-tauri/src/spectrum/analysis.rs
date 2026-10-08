@@ -1,13 +1,19 @@
 //! Turning captured samples into a coarse, log-spaced spectrum.
 //!
 //! Each capture stream owns an `Analyzer`: a ring of the latest `FFT_SIZE`
-//! mono samples. On every visualizer frame it runs one Hann-windowed FFT and
+//! mono samples. On every analysis tick it runs one Hann-windowed FFT and
 //! adds the power in each of `BANDS` log-spaced bands into a shared total, so
 //! several streams (one per Voicemeeter input) mix by summing power. A tiny
-//! radix-2 FFT keeps this dependency-free; at 2048 points, 30 times a second,
+//! radix-2 FFT keeps this dependency-free; at 1024 points, 60 times a second,
 //! it costs a fraction of a millisecond.
+//!
+//! The window is short on purpose. A Hann window's energy centres half the
+//! window into the past, so every doubling of `FFT_SIZE` puts the spectrum
+//! another ~10 ms behind the music; 1024 samples (21 ms at 48 kHz) keeps
+//! the visualizers on the beat, at the cost of the lowest few bands sharing
+//! bins (46 Hz each).
 
-pub const FFT_SIZE: usize = 2048;
+pub const FFT_SIZE: usize = 1024;
 pub const BANDS: usize = 48;
 const LOW_HZ: f32 = 40.0;
 const HIGH_HZ: f32 = 16_000.0;
@@ -264,6 +270,36 @@ mod tests {
         let mut power = [0.0; BANDS];
         a.add_band_power(&mut power);
         assert!(power.iter().all(|&p| p == 0.0));
+    }
+
+    #[test]
+    fn a_tone_shows_within_16_ms_of_starting() {
+        // How late the spectrum runs: feed a tone in 2 ms slices into silence
+        // and count how much of it has to arrive before its band reads 90% of
+        // the level it reaches once the window is full.
+        let sr = 48_000;
+        let band = band_of(1_000.0);
+        let mut full = Analyzer::new(sr);
+        full.push(sine(1_000.0, sr, 0.5, FFT_SIZE));
+        let mut power = [0.0; BANDS];
+        full.add_band_power(&mut power);
+        let target = to_levels(&power)[band] as f32;
+
+        let tone: Vec<f32> = sine(1_000.0, sr, 0.5, FFT_SIZE).collect();
+        let mut a = Analyzer::new(sr);
+        a.push_silence(FFT_SIZE);
+        let slice = 96;
+        let mut fed = 0;
+        while fed < FFT_SIZE {
+            a.push(tone[fed..fed + slice].iter().copied());
+            fed += slice;
+            let mut power = [0.0; BANDS];
+            a.add_band_power(&mut power);
+            if to_levels(&power)[band] as f32 >= target * 0.9 {
+                break;
+            }
+        }
+        assert!(fed <= 768, "took {fed} samples ({} ms)", fed as f32 / 48.0);
     }
 
     #[test]

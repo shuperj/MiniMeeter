@@ -59,6 +59,14 @@ describe("createBandGroups", () => {
     expect(held.onset).toBeLessThan(0.1);
   });
 
+  it("follows a sudden rise within two 60 Hz frames, so it stays on the beat", () => {
+    const step = createBandGroups(2);
+    step(spectrumWith(0, BANDS, 0), 0, 1);
+    const out = run(step, spectrumWith(0, BANDS, 1), 0, 2, 1);
+    expect(out.groups[0]).toBeGreaterThan(0.9);
+    expect(out.bass).toBeGreaterThan(0.9);
+  });
+
   it("smooths the same at 30 and 60 fps", () => {
     const at30 = run(createBandGroups(2), spectrumWith(0, 24, 0.6), 0, 6, 2);
     const at60 = run(createBandGroups(2), spectrumWith(0, 24, 0.6), 0, 12, 1);

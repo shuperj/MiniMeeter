@@ -15,8 +15,10 @@ const HIGH_HZ = 16_000;
 const FLOOR = 0.18;
 const RANGE = 0.55;
 
-// Rates per 60 Hz frame, rescaled by dt.
-const ATTACK = 0.6;
+// Rates per 60 Hz frame, rescaled by dt. The attack is nearly instant: the
+// spectrum already lags the music by its FFT window and transport, so every
+// frame of smoothing here is one more frame behind the beat.
+const ATTACK = 0.85;
 const RELEASE = 0.15;
 const BASS_AVERAGE_RATE = 0.05;
 const ONSET_DECAY = 0.85;

@@ -86,8 +86,10 @@ mod worker {
         COINIT_MULTITHREADED, STGM_READ,
     };
 
-    /// One analysis frame per visualizer frame.
-    const TICK: Duration = Duration::from_millis(33);
+    /// Analysis at 60 Hz. Each tick adds up to one tick of delay before a
+    /// change in the music reaches the screen, and the FFT is cheap, so this
+    /// is as fast as the visualizers can use.
+    const TICK: Duration = Duration::from_millis(16);
     /// Minimum gap between endpoint re-scans while running, which pick up
     /// Voicemeeter starting, or recover from a device that went away.
     const RESCAN: Duration = Duration::from_secs(3);

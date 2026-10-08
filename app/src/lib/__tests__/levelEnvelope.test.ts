@@ -35,6 +35,13 @@ describe("createLevelEnvelope", () => {
     expect(later).toBeLessThan(first * 0.2);
   });
 
+  it("follows a sudden rise within two 60 Hz frames", () => {
+    const env = createLevelEnvelope();
+    env(0, 1);
+    env(0.8, 1);
+    expect(env(0.8, 1).smooth).toBeGreaterThan(0.8 * 0.9);
+  });
+
   it("attacks faster than it releases", () => {
     const up = createLevelEnvelope();
     const rise = run(up, 1, 3).smooth;

@@ -12,8 +12,9 @@ export interface LevelEnvelopeOutput {
   hit: number;
 }
 
-// All rates are per 60 Hz frame, rescaled by dt.
-const ATTACK = 0.5;
+// All rates are per 60 Hz frame, rescaled by dt. A fast attack: the level
+// already arrives late, so smoothing its rise only adds to the lag.
+const ATTACK = 0.75;
 const RELEASE = 0.08;
 /** How fast the "recent average" a hit is measured against catches up. */
 const AVERAGE_RATE = 0.05;
