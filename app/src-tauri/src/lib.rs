@@ -4,12 +4,14 @@ mod commands;
 mod edition;
 mod fx;
 mod hotkeys;
+mod spectrum;
 mod voicemeeter;
 
 use commands::VmState;
 use app_sessions::AppSessionsHandle;
 use fx::FxState;
 use hotkeys::ShortcutMap;
+use spectrum::SpectrumHandle;
 use std::sync::atomic::{AtomicBool, AtomicU8};
 use std::sync::{Arc, Mutex};
 use tauri::{Manager, WebviewWindow};
@@ -45,6 +47,7 @@ pub fn run() {
         .manage(ShortcutMap::default())
         .manage(FxState::default())
         .manage(AppSessionsHandle::default())
+        .manage(SpectrumHandle::default())
         .manage(WindowState {
             window: Mutex::new(None),
         })
@@ -90,6 +93,7 @@ pub fn run() {
             app_sessions::vm_set_app_volume,
             app_sessions::vm_set_app_mute,
             app_sessions::vm_set_app_polling,
+            spectrum::vm_set_spectrum_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
