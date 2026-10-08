@@ -1,11 +1,6 @@
-import { useRef, useEffect } from "react";
-
-interface NoiseFlowVisualizerProps {
-  opacity: number;
-  intensity: number;
-  masterLevel: number;
-  paused?: boolean;
-}
+import VisualizerCanvas, { type Scene, type VisualizerProps } from "./VisualizerCanvas";
+import { bucketOf, createTrailFade } from "../../lib/frameLoop";
+import { createBandGroups } from "../../lib/spectrumBands";
 
 interface Particle {
   x: number;
@@ -16,6 +11,15 @@ interface Particle {
 }
 
 const MAX_PARTICLES = 400;
+
+/**
+ * Segments are grouped by remaining life into this many alpha levels, so the
+ * whole field is a handful of stroke() calls instead of one per particle.
+ */
+const ALPHA_BUCKETS = 8;
+
+/** Marks a particle that respawned this frame and has no segment to draw. */
+const NO_SEGMENT = 255;
 
 // Simple hash-based noise for flow field (fast, no dependency)
 function noise2d(x: number, y: number): number {
@@ -39,78 +43,48 @@ function smoothNoise(x: number, y: number): number {
   return nx0 + (nx1 - nx0) * sy;
 }
 
-export default function NoiseFlowVisualizer({
-  opacity,
-  intensity,
-  masterLevel,
-  paused = false,
-}: NoiseFlowVisualizerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const levelRef = useRef(masterLevel);
-  const intensityRef = useRef(intensity);
+function createNoiseFlow(ctx: CanvasRenderingContext2D): Scene {
+  const fade = createTrailFade(0.04);
+  let time = 0;
+  const bands = createBandGroups(1);
 
-  useEffect(() => { levelRef.current = masterLevel; }, [masterLevel]);
-  useEffect(() => { intensityRef.current = intensity; }, [intensity]);
+  const respawn = (p: Particle) => {
+    p.x = Math.random();
+    p.y = Math.random();
+    p.prevX = p.x;
+    p.prevY = p.y;
+    p.life = 0.5 + Math.random() * 0.5;
+  };
 
-  useEffect(() => {
-    if (paused) return;
+  const particles: Particle[] = [];
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    const p = { x: 0, y: 0, prevX: 0, prevY: 0, life: 0 };
+    respawn(p);
+    particles.push(p);
+  }
+  const buckets = new Uint8Array(MAX_PARTICLES);
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let raf = 0;
-    let time = 0;
-
-    const particles: Particle[] = [];
-    const spawn = () => ({
-      x: Math.random(),
-      y: Math.random(),
-      prevX: 0,
-      prevY: 0,
-      life: 0.5 + Math.random() * 0.5,
-    });
-
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-      const p = spawn();
-      p.prevX = p.x;
-      p.prevY = p.y;
-      particles.push(p);
-    }
-
-    const resize = () => {
-      canvas.width = canvas.clientWidth;
-      canvas.height = canvas.clientHeight;
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-
-    const animate = () => {
-      const level = levelRef.current;
-      const inten = intensityRef.current;
-      const w = canvas.width;
-      const h = canvas.height;
-      if (w === 0 || h === 0) { raf = requestAnimationFrame(animate); return; }
-
-      time += 0.003 + inten * 0.002 + level * inten * 0.008;
+  return {
+    draw({ w, h, dt, motion, level, reactivity, palette, spectrum }) {
+      // Bass drives the flow, mids stir up turbulence, treble brightens it.
+      const { bass, mid, treble } = bands(spectrum, level, dt);
+      time += 0.004 * motion + bass * reactivity * 0.006 * dt;
 
       // Fade trail
-      ctx.fillStyle = "rgba(0,0,0,0.04)";
-      ctx.fillRect(0, 0, w, h);
+      // Fade the trails; held back at high frame rates until it's strong
+      // enough to survive 8-bit rounding (see createTrailFade).
+      const fadeAlpha = fade(dt);
+      if (fadeAlpha > 0) {
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = `rgba(0,0,0,${fadeAlpha})`;
+        ctx.fillRect(0, 0, w, h);
+      }
 
-      const accentR = getComputedStyle(document.documentElement)
-        .getPropertyValue("--viz-r").trim() || "58";
-      const accentG = getComputedStyle(document.documentElement)
-        .getPropertyValue("--viz-g").trim() || "134";
-      const accentB = getComputedStyle(document.documentElement)
-        .getPropertyValue("--viz-b").trim() || "255";
+      const noiseScale = 3.5 + mid * reactivity * 2.5;
+      const particleSpeed = 0.004 * motion + bass * reactivity * 0.008 * dt;
 
-      const noiseScale = 3 + inten * 1 + level * inten * 2;
-      const particleSpeed = 0.003 + inten * 0.002 + level * inten * 0.008;
-
-      for (const p of particles) {
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
         p.prevX = p.x;
         p.prevY = p.y;
 
@@ -119,44 +93,46 @@ export default function NoiseFlowVisualizer({
 
         p.x += Math.cos(angle) * particleSpeed;
         p.y += Math.sin(angle) * particleSpeed;
-        p.life -= 0.002;
+        p.life -= 0.002 * motion;
 
         // Reset if out of bounds or dead
         if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1 || p.life <= 0) {
-          const np = spawn();
-          p.x = np.x;
-          p.y = np.y;
-          p.prevX = p.x;
-          p.prevY = p.y;
-          p.life = np.life;
-          continue;
+          respawn(p);
+          buckets[i] = NO_SEGMENT;
+        } else {
+          buckets[i] = bucketOf(p.life, ALPHA_BUCKETS);
         }
-
-        const alpha = p.life * (0.15 + inten * 0.15 + level * inten * 0.2);
-
-        ctx.strokeStyle = `rgba(${accentR},${accentG},${accentB},${alpha})`;
-        ctx.lineWidth = 0.8 + level * inten * 1;
-        ctx.beginPath();
-        ctx.moveTo(p.prevX * w, p.prevY * h);
-        ctx.lineTo(p.x * w, p.y * h);
-        ctx.stroke();
       }
 
-      raf = requestAnimationFrame(animate);
-    };
+      const maxAlpha = Math.min(1, 0.25 + treble * reactivity * 0.3);
+      ctx.lineWidth = 0.8 + bass * reactivity * 0.8;
 
-    raf = requestAnimationFrame(animate);
-    return () => {
-      cancelAnimationFrame(raf);
-      observer.disconnect();
-    };
-  }, [paused]);
+      // Particles are spread across the palette colors; one stroke per
+      // alpha bucket and color.
+      const colors = palette.length;
+      for (let c = 0; c < colors; c++) {
+        ctx.strokeStyle = `rgb(${palette[c]})`;
+        for (let b = 0; b < ALPHA_BUCKETS; b++) {
+          ctx.beginPath();
+          let any = false;
+          for (let i = c; i < particles.length; i += colors) {
+            if (buckets[i] !== b) continue;
+            const p = particles[i];
+            ctx.moveTo(p.prevX * w, p.prevY * h);
+            ctx.lineTo(p.x * w, p.y * h);
+            any = true;
+          }
+          if (!any) continue;
+          ctx.globalAlpha = maxAlpha * (b + 0.5) / ALPHA_BUCKETS;
+          ctx.stroke();
+        }
+      }
 
-  return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 w-full h-full"
-      style={{ opacity }}
-    />
-  );
+      ctx.globalAlpha = 1;
+    },
+  };
+}
+
+export default function NoiseFlowVisualizer(props: VisualizerProps) {
+  return <VisualizerCanvas {...props} createScene={createNoiseFlow} />;
 }

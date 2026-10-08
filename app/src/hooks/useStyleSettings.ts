@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import type { StyleSettings, BackgroundStyle } from "../types/style";
-import { DEFAULT_STYLE_SETTINGS, DEFAULT_BACKGROUND_STYLE } from "../types/style";
+import { DEFAULT_STYLE_SETTINGS, DEFAULT_BACKGROUND_STYLE, DEFAULT_VISUALIZER_PALETTE, VISUALIZER_FPS_OPTIONS } from "../types/style";
+import { normalizePalette } from "../lib/color";
 
 const STYLE_KEY = "style";
 
@@ -37,11 +38,24 @@ function migrateBackground(raw: any): BackgroundStyle {
   if (bg.unfocusedVisualizerMode === "off") {
     bg.unfocusedVisualizerMode = "paused";
   }
+  // The short-lived 10 fps "low" option became the 30 fps cap.
+  if (bg.unfocusedVisualizerMode === "low") {
+    bg.unfocusedVisualizerMode = "30";
+  }
 
   // Migrate removed visualizer presets → default
-  if (bg.visualizerPreset === "plasma") {
+  if (bg.visualizerPreset === "plasma" || bg.visualizerPreset === "color-field") {
     bg.visualizerPreset = "xmb-smoke";
   }
+
+  if (!["none", "pixelate", "crt"].includes(bg.visualizerFilter)) {
+    bg.visualizerFilter = "none";
+  }
+  if (!VISUALIZER_FPS_OPTIONS.includes(bg.visualizerFps)) {
+    bg.visualizerFps = DEFAULT_BACKGROUND_STYLE.visualizerFps;
+  }
+
+  bg.visualizerPalette = normalizePalette(bg.visualizerPalette, DEFAULT_VISUALIZER_PALETTE);
 
   return bg;
 }

@@ -1,11 +1,6 @@
-import { useRef, useEffect } from "react";
-
-interface StarfieldVisualizerProps {
-  opacity: number;
-  intensity: number;
-  masterLevel: number;
-  paused?: boolean;
-}
+import VisualizerCanvas, { type Scene, type VisualizerProps } from "./VisualizerCanvas";
+import { bucketOf } from "../../lib/frameLoop";
+import { createBandGroups } from "../../lib/spectrumBands";
 
 interface Star {
   x: number;
@@ -14,133 +9,129 @@ interface Star {
 }
 
 const MAX_STARS = 300;
+/** Streak length, in 60 Hz frames of travel. */
+const TRAIL_FRAMES = 7;
 
-export default function StarfieldVisualizer({
-  opacity,
-  intensity,
-  masterLevel,
-  paused = false,
-}: StarfieldVisualizerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const levelRef = useRef(masterLevel);
-  const intensityRef = useRef(intensity);
+/**
+ * Stars are grouped by depth, which sets both their alpha and their tint, so
+ * each depth band is one fill (and one streak stroke) instead of one per star.
+ * With 10 bands the accent/white split at depth 0.6 falls on a band edge.
+ */
+const DEPTH_BANDS = 10;
+const ACCENT_BAND = 6;
 
-  useEffect(() => { levelRef.current = masterLevel; }, [masterLevel]);
-  useEffect(() => { intensityRef.current = intensity; }, [intensity]);
+/** Marks a star that respawned this frame and isn't drawn. */
+const HIDDEN = 255;
 
-  useEffect(() => {
-    if (paused) return;
+function createStarfield(ctx: CanvasRenderingContext2D): Scene {
+  const bands = createBandGroups(1);
+  const stars: Star[] = [];
+  const respawn = (star: Star) => {
+    star.x = (Math.random() - 0.5) * 2;
+    star.y = (Math.random() - 0.5) * 2;
+    star.z = 1;
+  };
+  for (let i = 0; i < MAX_STARS; i++) {
+    stars.push({
+      x: (Math.random() - 0.5) * 2,
+      y: (Math.random() - 0.5) * 2,
+      z: Math.random(),
+    });
+  }
 
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+  // Per-frame screen positions, reused across frames.
+  const sx = new Float32Array(MAX_STARS);
+  const sy = new Float32Array(MAX_STARS);
+  const radius = new Float32Array(MAX_STARS);
+  const band = new Uint8Array(MAX_STARS);
 
-    let raf = 0;
-
-    const stars: Star[] = [];
-    for (let i = 0; i < MAX_STARS; i++) {
-      stars.push({
-        x: (Math.random() - 0.5) * 2,
-        y: (Math.random() - 0.5) * 2,
-        z: Math.random(),
-      });
-    }
-
-    const resize = () => {
-      canvas.width = canvas.clientWidth;
-      canvas.height = canvas.clientHeight;
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-
-    const animate = () => {
-      const level = levelRef.current;
-      const inten = intensityRef.current;
-      const w = canvas.width;
-      const h = canvas.height;
-      if (w === 0 || h === 0) { raf = requestAnimationFrame(animate); return; }
-
+  return {
+    draw({ w, h, dt, motion, level, reactivity, palette, spectrum }) {
       const cx = w / 2;
       const cy = h / 2;
+      const { groups, bass, treble } = bands(spectrum, level, dt);
 
-      // Speed: base + intensity + audio*intensity
-      const speed = 0.002 + inten * 0.003 + level * inten * 0.012;
+      // Warp: a steady cruise (the Speed setting) plus a push from the bass.
+      const step = 0.0035 * motion + bass * reactivity * 0.012 * dt;
+      // Speed per 60 Hz frame. Each streak covers the last TRAIL_FRAMES of a
+      // star's travel, drawn fresh every frame: trails come from the star's
+      // speed, not from leftover pixels, so they look the same at any frame
+      // rate (no beading at 30 fps, no haze at 240).
+      const speed = dt > 0 ? step / dt : 0;
+      const trail = speed * TRAIL_FRAMES;
 
-      ctx.fillStyle = "rgba(0,0,0,0.15)";
-      ctx.fillRect(0, 0, w, h);
+      ctx.clearRect(0, 0, w, h);
 
-      const accentR = getComputedStyle(document.documentElement)
-        .getPropertyValue("--viz-r").trim() || "58";
-      const accentG = getComputedStyle(document.documentElement)
-        .getPropertyValue("--viz-g").trim() || "134";
-      const accentB = getComputedStyle(document.documentElement)
-        .getPropertyValue("--viz-b").trim() || "255";
+      const sizeScale = 1.5 + groups[0] * reactivity * 2;
 
-      for (const star of stars) {
-        star.z -= speed;
+      for (let i = 0; i < MAX_STARS; i++) {
+        const star = stars[i];
+        star.z -= step;
+        if (star.z <= 0.001) respawn(star);
 
-        if (star.z <= 0.001) {
-          star.x = (Math.random() - 0.5) * 2;
-          star.y = (Math.random() - 0.5) * 2;
-          star.z = 1;
-        }
-
-        const sx = cx + (star.x / star.z) * cx;
-        const sy = cy + (star.y / star.z) * cy;
-
-        if (sx < 0 || sx > w || sy < 0 || sy > h) {
-          star.x = (Math.random() - 0.5) * 2;
-          star.y = (Math.random() - 0.5) * 2;
-          star.z = 1;
+        const x = cx + (star.x / star.z) * cx;
+        const y = cy + (star.y / star.z) * cy;
+        if (x < 0 || x > w || y < 0 || y > h) {
+          respawn(star);
+          band[i] = HIDDEN;
           continue;
         }
 
         const depth = 1 - star.z;
-        const size = depth * (1.5 + level * inten * 2);
-        const alpha = depth * (0.5 + inten * 0.3 + level * inten * 0.3);
+        sx[i] = x;
+        sy[i] = y;
+        radius[i] = Math.max(0.5, depth * sizeScale);
+        band[i] = bucketOf(depth, DEPTH_BANDS);
+      }
 
-        // Near stars get accent tint, far stars stay white
-        if (depth > 0.6) {
-          ctx.fillStyle = `rgba(${accentR},${accentG},${accentB},${alpha})`;
-        } else {
-          ctx.fillStyle = `rgba(255,255,255,${alpha * 0.7})`;
-        }
+      // Treble makes the stars glitter.
+      const alphaScale = Math.min(1.2, 0.6 + treble * reactivity * 0.45);
 
-        ctx.beginPath();
-        ctx.arc(sx, sy, Math.max(0.5, size), 0, Math.PI * 2);
-        ctx.fill();
+      for (let b = 0; b < DEPTH_BANDS; b++) {
+        const depth = (b + 0.5) / DEPTH_BANDS;
+        const alpha = depth * alphaScale;
+        const tinted = b >= ACCENT_BAND;
 
-        // Streak line for fast-moving stars
-        if (speed > 0.006 && depth > 0.3) {
-          const prevZ = star.z + speed;
-          const prevSx = cx + (star.x / prevZ) * cx;
-          const prevSy = cy + (star.y / prevZ) * cy;
-          ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.3})`;
-          ctx.lineWidth = Math.max(0.3, size * 0.5);
+        // Near stars are tinted (spread across the palette), far stars stay
+        // white. One streak stroke and one dot fill per band and color.
+        const tints = tinted ? palette.length : 1;
+        for (let c = 0; c < tints; c++) {
+          const color = tinted ? `rgb(${palette[c]})` : "#fff";
+          const visible = (i: number) => band[i] === b && (!tinted || i % tints === c);
+
           ctx.beginPath();
-          ctx.moveTo(prevSx, prevSy);
-          ctx.lineTo(sx, sy);
+          let any = false;
+          for (let i = 0; i < MAX_STARS; i++) {
+            if (!visible(i)) continue;
+            const star = stars[i];
+            const prevZ = star.z + trail;
+            ctx.moveTo(cx + (star.x / prevZ) * cx, cy + (star.y / prevZ) * cy);
+            ctx.lineTo(sx[i], sy[i]);
+            any = true;
+          }
+          if (!any) continue;
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = alpha * 0.45;
+          ctx.lineWidth = Math.max(0.4, depth * sizeScale * 0.7);
           ctx.stroke();
+
+          ctx.beginPath();
+          for (let i = 0; i < MAX_STARS; i++) {
+            if (!visible(i)) continue;
+            ctx.moveTo(sx[i] + radius[i], sy[i]);
+            ctx.arc(sx[i], sy[i], radius[i], 0, Math.PI * 2);
+          }
+          ctx.fillStyle = color;
+          ctx.globalAlpha = Math.min(1, tinted ? alpha : alpha * 0.8);
+          ctx.fill();
         }
       }
 
-      raf = requestAnimationFrame(animate);
-    };
+      ctx.globalAlpha = 1;
+    },
+  };
+}
 
-    raf = requestAnimationFrame(animate);
-    return () => {
-      cancelAnimationFrame(raf);
-      observer.disconnect();
-    };
-  }, [paused]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 w-full h-full"
-      style={{ opacity }}
-    />
-  );
+export default function StarfieldVisualizer(props: VisualizerProps) {
+  return <VisualizerCanvas {...props} createScene={createStarfield} />;
 }

@@ -4,6 +4,14 @@ export const inputCls =
 export const smallText = "text-[clamp(0.5rem,1.5vw,0.65rem)]";
 export const medText = "text-[clamp(0.55rem,1.8vw,0.75rem)]";
 export const rowLabelCls = "w-[clamp(34px,9vw,52px)] shrink-0 text-white/40";
+/** Label column of a Style-tab SettingRow: wider than rowLabelCls so
+ *  "Accent color" / "Reactivity" fit, and allowed to wrap onto two lines. */
+export const settingLabelCls = "w-[clamp(48px,13vw,76px)] shrink-0 text-white/40 leading-tight";
+export const sliderCls = "flex-1 min-w-[clamp(40px,10vw,80px)] accent-[var(--accent)] cursor-pointer";
+/** Fixed-width numeric readout beside a slider. */
+export const sliderValueCls = "tabular-nums w-[4ch] text-right shrink-0";
+export const swatchCls =
+  "w-[clamp(20px,4vw,28px)] h-[clamp(16px,3vw,22px)] border border-white/20 rounded-[2px] cursor-pointer bg-transparent p-0 shrink-0";
 export const sectionCls =
   "bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)] shrink-0";
 export const addButtonCls = `flex items-center justify-center gap-1 bg-white/10 hover:bg-white/15 border border-dashed border-white/20 rounded-[4px] ${medText} text-white/70 py-[clamp(4px,0.8dvh,8px)] cursor-pointer shrink-0`;

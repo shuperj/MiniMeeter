@@ -10,14 +10,24 @@ import { useWindowFocus } from "./hooks/useWindowFocus";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useEditionInfo } from "./hooks/useEditionInfo";
 import { useFxGroups } from "./hooks/useFxGroups";
-import type { StyleSettings } from "./types/style";
+import type { StyleSettings, UnfocusedVisualizerMode } from "./types/style";
 import Titlebar from "./components/Titlebar";
 import Fader from "./components/Fader";
 import BackgroundLayer from "./components/BackgroundLayer";
+import { visualizerLevel } from "./lib/visualizerLevel";
+import { hexToRgb } from "./lib/color";
+import { useSpectrum } from "./hooks/useSpectrum";
+import { usesSpectrum } from "./lib/visualizerPresets";
 import SettingsPanel from "./components/SettingsPanel";
 import ConnectionOverlay from "./components/ConnectionOverlay";
 import FxBar from "./components/FxBar";
 import AppMixerPanel from "./components/AppMixerPanel";
+
+/** Frame rate to run at: the setting, or a lower unfocused cap (never higher). */
+function unfocusedFps(fps: number, mode: UnfocusedVisualizerMode, focused: boolean): number {
+  if (focused || mode === "animated" || mode === "paused") return fps;
+  return Math.min(fps, Number(mode));
+}
 
 export default function App() {
   const { style, saveStyle, loaded: styleLoaded } = useStyleSettings();
@@ -33,20 +43,43 @@ export default function App() {
     effectiveSettings.customAccentColor,
   );
 
-  // Visualizer color: either follows accent or uses a custom color
+  // Visualizer colors, published as inline CSS vars the visualizers read each
+  // frame: --viz-r/g/b is the main color, --viz-palette lists every color as
+  // "r,g,b|r,g,b" (empty unless a palette is chosen). Not ";": that ends a CSS
+  // declaration, so the browser silently drops the whole value.
   useEffect(() => {
     const root = document.documentElement;
+    let main: string;
+    let palette = "";
     if (bg.visualizerColorSource === "custom") {
-      const h = bg.visualizerColor.replace("#", "");
-      root.style.setProperty("--viz-r", String(parseInt(h.substring(0, 2), 16) || 0));
-      root.style.setProperty("--viz-g", String(parseInt(h.substring(2, 4), 16) || 0));
-      root.style.setProperty("--viz-b", String(parseInt(h.substring(4, 6), 16) || 0));
+      main = hexToRgb(bg.visualizerColor).join(",");
+    } else if (bg.visualizerColorSource === "palette") {
+      const colors = bg.visualizerPalette.map((c) => hexToRgb(c).join(","));
+      main = colors[0];
+      palette = colors.join("|");
     } else {
-      root.style.setProperty("--viz-r", getComputedStyle(root).getPropertyValue("--accent-r"));
-      root.style.setProperty("--viz-g", getComputedStyle(root).getPropertyValue("--accent-g"));
-      root.style.setProperty("--viz-b", getComputedStyle(root).getPropertyValue("--accent-b"));
+      const css = getComputedStyle(root);
+      main = ["--accent-r", "--accent-g", "--accent-b"].map((v) => css.getPropertyValue(v).trim()).join(",");
     }
-  }, [bg.visualizerColorSource, bg.visualizerColor, effectiveSettings.accentSource, effectiveSettings.customAccentColor]);
+    const [r, g, b] = main.split(",");
+    root.style.setProperty("--viz-r", r);
+    root.style.setProperty("--viz-g", g);
+    root.style.setProperty("--viz-b", b);
+    root.style.setProperty("--viz-palette", palette);
+  }, [bg.visualizerColorSource, bg.visualizerColor, bg.visualizerPalette, effectiveSettings.accentSource, effectiveSettings.customAccentColor]);
+
+  // Fader glass: one setting drives the panel's tint and its backdrop blur,
+  // read by every Fader through CSS vars. At 0 there is no blur at all, so it
+  // costs nothing.
+  useEffect(() => {
+    const glass = Math.min(1, Math.max(0, effectiveSettings.faderGlass ?? 1));
+    const root = document.documentElement.style;
+    root.setProperty("--fader-glass-tint", String(0.8 * glass));
+    root.setProperty(
+      "--fader-glass-filter",
+      glass > 0 ? `blur(${(12 * glass).toFixed(1)}px) saturate(${(1 + 0.5 * glass).toFixed(2)})` : "none",
+    );
+  }, [effectiveSettings.faderGlass]);
 
   // Compute background layer props — focus only affects visualizer pause
   const bgProps = useMemo(() => {
@@ -63,6 +96,9 @@ export default function App() {
       visualizerPreset: bg.visualizerPreset,
       visualizerOpacity: bg.visualizerOpacity,
       visualizerIntensity: bg.visualizerIntensity,
+      visualizerSpeed: bg.visualizerSpeed,
+      visualizerFps: unfocusedFps(bg.visualizerFps, bg.unfocusedVisualizerMode, focused),
+      visualizerFilter: bg.visualizerFilter,
     };
   }, [bg, focused]);
 
@@ -113,6 +149,7 @@ export default function App() {
     error,
     channels,
     levels,
+    preFaderLevels,
     busGains,
     setGain,
     setMute,
@@ -157,14 +194,17 @@ export default function App() {
   // Sync every hotkey (mutes + FX groups) to Rust — shortcuts are handled entirely there
   useGlobalShortcuts(channelConfigs, fxGroups);
 
-  // Master level for visualizers: max of all strip levels
-  const masterLevel = useMemo(() => {
-    let max = 0;
-    for (const v of levels.values()) {
-      if (v > max) max = v;
-    }
-    return max;
-  }, [levels]);
+  // Real frequency data, captured only while a visualizer that uses it is on
+  // screen and animating (see hooks/useSpectrum).
+  const spectrum = useSpectrum(
+    bgProps.showVisualizer && !bgProps.visualizerPaused && usesSpectrum(bgProps.visualizerPreset),
+  );
+
+  // Level for the visualizers: loudest pre-fader source (see lib/visualizerLevel)
+  const masterLevel = useMemo(
+    () => visualizerLevel(preFaderLevels, channels),
+    [preFaderLevels, channels],
+  );
 
   // Fader width CSS var
   const faderWidth = effectiveSettings.faderColumnWidth;
@@ -184,7 +224,11 @@ export default function App() {
         visualizerPreset={bgProps.visualizerPreset}
         visualizerOpacity={bgProps.visualizerOpacity}
         visualizerIntensity={bgProps.visualizerIntensity}
+        visualizerSpeed={bgProps.visualizerSpeed}
+        visualizerFps={bgProps.visualizerFps}
+        visualizerFilter={bgProps.visualizerFilter}
         masterLevel={masterLevel}
+        spectrum={spectrum}
       />
 
       {/* Glass overlay — rendered via CSS on #root > div */}

@@ -1,69 +1,37 @@
-import { useRef, useEffect } from "react";
-
-interface GeometricPulseVisualizerProps {
-  opacity: number;
-  intensity: number;
-  masterLevel: number;
-  paused?: boolean;
-}
+import VisualizerCanvas, { type Scene, type VisualizerProps } from "./VisualizerCanvas";
+import { createBandGroups } from "../../lib/spectrumBands";
 
 const NUM_RINGS = 6;
 
-export default function GeometricPulseVisualizer({
-  opacity,
-  intensity,
-  masterLevel,
-  paused = false,
-}: GeometricPulseVisualizerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const levelRef = useRef(masterLevel);
-  const intensityRef = useRef(intensity);
+function createGeometricPulse(ctx: CanvasRenderingContext2D): Scene {
+  let time = 0;
+  const bands = createBandGroups(NUM_RINGS);
+  // Each ring's angle is accumulated frame by frame. Computing it as
+  // time × (level-dependent speed) made the rings jump whenever the level
+  // changed, since time keeps growing.
+  const angles = new Float32Array(NUM_RINGS);
 
-  useEffect(() => { levelRef.current = masterLevel; }, [masterLevel]);
-  useEffect(() => { intensityRef.current = intensity; }, [intensity]);
+  const drawPolygon = (
+    cx: number, cy: number, radius: number,
+    sides: number, rotation: number,
+  ) => {
+    ctx.beginPath();
+    for (let i = 0; i <= sides; i++) {
+      const angle = (i / sides) * Math.PI * 2 + rotation;
+      const x = cx + Math.cos(angle) * radius;
+      const y = cy + Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  };
 
-  useEffect(() => {
-    if (paused) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let raf = 0;
-    let time = 0;
-
-    const resize = () => {
-      canvas.width = canvas.clientWidth;
-      canvas.height = canvas.clientHeight;
-    };
-    resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
-
-    const drawPolygon = (
-      cx: number, cy: number, radius: number,
-      sides: number, rotation: number,
-    ) => {
-      ctx.beginPath();
-      for (let i = 0; i <= sides; i++) {
-        const angle = (i / sides) * Math.PI * 2 + rotation;
-        const x = cx + Math.cos(angle) * radius;
-        const y = cy + Math.sin(angle) * radius;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-    };
-
-    const animate = () => {
-      const level = levelRef.current;
-      const inten = intensityRef.current;
-      time += 0.008 + inten * 0.005 + level * inten * 0.015;
-
-      const w = canvas.width;
-      const h = canvas.height;
-      if (w === 0 || h === 0) { raf = requestAnimationFrame(animate); return; }
+  return {
+    draw({ w, h, dt, motion, level, reactivity, palette, spectrum }) {
+      // One spectrum group per ring: the outer ring follows the bass, the
+      // inner ring the treble.
+      const { groups, bass } = bands(spectrum, level, dt);
+      time += 0.008 * motion;
 
       ctx.clearRect(0, 0, w, h);
 
@@ -71,71 +39,58 @@ export default function GeometricPulseVisualizer({
       const cy = h / 2;
       const maxRadius = Math.min(w, h) * 0.45;
 
-      const accentR = getComputedStyle(document.documentElement)
-        .getPropertyValue("--viz-r").trim() || "58";
-      const accentG = getComputedStyle(document.documentElement)
-        .getPropertyValue("--viz-g").trim() || "134";
-      const accentB = getComputedStyle(document.documentElement)
-        .getPropertyValue("--viz-b").trim() || "255";
+      // Solid colors (rings alternate through the palette); per-shape
+      // transparency goes through globalAlpha so no rgba() strings are built
+      // and parsed per shape.
 
       for (let i = 0; i < NUM_RINGS; i++) {
         const progress = (i + 1) / NUM_RINGS;
         const baseRadius = progress * maxRadius;
+        const e = groups[NUM_RINGS - 1 - i] * reactivity;
 
-        // Audio pulse: rings breathe with audio
-        const pulse = 1 + Math.sin(time * 2 + i * 0.8) * (0.05 + level * inten * 0.15);
+        // A slow breath of its own, pushed outward by its band.
+        const pulse = 1 + Math.sin(time * 2 + i * 0.8) * 0.04 + e * 0.18;
         const radius = baseRadius * pulse;
 
-        // Alternate between shapes: hex, triangle, hex...
+        // Alternate between shapes: hex, triangle, square...
         const sides = i % 3 === 0 ? 6 : i % 3 === 1 ? 3 : 4;
 
-        // Rotation: each ring rotates at different speed, alternating direction
+        // Rotation: each ring rotates at its own rate, alternating direction
         const dir = i % 2 === 0 ? 1 : -1;
-        const rotSpeed = 0.3 + inten * 0.2 + level * inten * 0.5;
-        const rotation = time * rotSpeed * dir * (1 + i * 0.1);
+        angles[i] += 0.0032 * dir * (1 + i * 0.1) * motion;
+        const rotation = angles[i];
 
-        // Alpha: outer rings more transparent
-        const alpha = (0.12 + inten * 0.1 + level * inten * 0.15) * (1 - progress * 0.5);
+        // Outer rings a little more transparent; loud bands light up.
+        const alpha = Math.min(1, (0.18 + e * 0.35) * (1 - progress * 0.4));
 
-        ctx.strokeStyle = `rgba(${accentR},${accentG},${accentB},${alpha})`;
-        ctx.lineWidth = 1 + (1 - progress) * 1.5 + level * inten * 1;
-
+        ctx.strokeStyle = `rgb(${palette[i % palette.length]})`;
         drawPolygon(cx, cy, radius, sides, rotation);
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = 1 + (1 - progress) * 1.5 + e * 2;
         ctx.stroke();
 
-        // Inner glow line at higher intensity
-        if (inten > 0.3 || level > 0.2) {
-          const glowAlpha = alpha * 0.3;
-          ctx.strokeStyle = `rgba(${accentR},${accentG},${accentB},${glowAlpha})`;
-          ctx.lineWidth = 3 + level * inten * 3;
-          drawPolygon(cx, cy, radius, sides, rotation);
+        // Glow line while the band is active — same path, wider and fainter
+        if (e > 0.15) {
+          ctx.globalAlpha = alpha * 0.3;
+          ctx.lineWidth = 3 + e * 4;
           ctx.stroke();
         }
       }
 
-      // Center dot that pulses with audio
-      const dotSize = 2 + inten * 2 + level * inten * 4;
-      const dotAlpha = 0.3 + inten * 0.2 + level * inten * 0.3;
-      ctx.fillStyle = `rgba(${accentR},${accentG},${accentB},${dotAlpha})`;
+      // Center dot that thumps with the bass
+      const kick = bass * reactivity;
+      const dotSize = 2.5 + kick * 6;
+      ctx.globalAlpha = Math.min(1, 0.35 + kick * 0.5);
+      ctx.fillStyle = `rgb(${palette[0]})`;
       ctx.beginPath();
       ctx.arc(cx, cy, dotSize, 0, Math.PI * 2);
       ctx.fill();
 
-      raf = requestAnimationFrame(animate);
-    };
+      ctx.globalAlpha = 1;
+    },
+  };
+}
 
-    raf = requestAnimationFrame(animate);
-    return () => {
-      cancelAnimationFrame(raf);
-      observer.disconnect();
-    };
-  }, [paused]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 w-full h-full"
-      style={{ opacity }}
-    />
-  );
+export default function GeometricPulseVisualizer(props: VisualizerProps) {
+  return <VisualizerCanvas {...props} createScene={createGeometricPulse} />;
 }

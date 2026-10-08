@@ -5,9 +5,11 @@ import {
   disable as autostartDisable,
   isEnabled as autostartIsEnabled,
 } from "@tauri-apps/plugin-autostart";
-import type { StyleSettings, WindowPreset } from "../../types/style";
+import type { AccentSource, StyleSettings, WindowPreset } from "../../types/style";
 import { DEFAULT_STYLE_SETTINGS } from "../../types/style";
 import WindowStateStyleEditor from "./WindowStateStyleEditor";
+import SettingsGroup, { SettingRow, Segmented } from "./SettingsGroup";
+import { sectionCls, sliderCls, sliderValueCls, swatchCls } from "./shared";
 
 interface StyleTabProps {
   draft: StyleSettings;
@@ -19,13 +21,20 @@ interface StyleTabProps {
   inputCls: string;
 }
 
+const ACCENT_SOURCES: { value: AccentSource; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "custom", label: "Custom" },
+];
+
+const checkboxLabelCls = "flex items-center gap-1 cursor-pointer select-none";
+const checkboxCls = "accent-[var(--accent)] cursor-pointer";
+
 export default function StyleTab({
   draft,
   onChange,
   meterDecay,
   onMeterDecayChange,
   smallText,
-  medText,
   inputCls,
 }: StyleTabProps) {
   const update = (patch: Partial<StyleSettings>) => {
@@ -80,74 +89,45 @@ export default function StyleTab({
 
   return (
     <div className="flex flex-col gap-[clamp(6px,1.2dvh,10px)]">
-      {/* Accent color */}
-      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
-        <span className={`${medText} font-semibold text-white/80`}>Accent Color</span>
-        <div className={`flex items-center gap-[clamp(4px,0.8vw,8px)] ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
-          <label className="flex items-center gap-1 cursor-pointer select-none">
-            <input
-              type="radio"
-              name="accent"
-              checked={draft.accentSource === "system"}
-              onChange={() => update({ accentSource: "system" })}
-              className="accent-[var(--accent)] cursor-pointer"
-            />
-            System
-          </label>
-          <label className="flex items-center gap-1 cursor-pointer select-none">
-            <input
-              type="radio"
-              name="accent"
-              checked={draft.accentSource === "custom"}
-              onChange={() => update({ accentSource: "custom" })}
-              className="accent-[var(--accent)] cursor-pointer"
-            />
-            Custom
-          </label>
+      {/* Accent color — always visible, it tints everything below */}
+      <div className={sectionCls}>
+        <SettingRow label="Accent color">
+          <Segmented
+            options={ACCENT_SOURCES}
+            value={draft.accentSource}
+            onChange={(accentSource) => update({ accentSource })}
+          />
           {draft.accentSource === "custom" && (
             <>
               <input
                 type="color"
                 value={draft.customAccentColor}
                 onChange={(e) => update({ customAccentColor: e.target.value })}
-                className="w-[clamp(20px,4vw,28px)] h-[clamp(16px,3vw,22px)] border border-white/20 rounded-[2px] cursor-pointer bg-transparent p-0"
+                className={swatchCls}
               />
               <span className="tabular-nums">{draft.customAccentColor}</span>
             </>
           )}
-        </div>
+        </SettingRow>
       </div>
 
-      {/* Meter decay */}
-      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
-        <span className={`${medText} font-semibold text-white/80`}>Meter Decay</span>
-        <div className={`flex items-center gap-[clamp(4px,1vw,8px)] ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
-          <input
-            type="range"
-            min="0.05"
-            max="2"
-            step="0.05"
-            value={meterDecay}
-            onChange={(e) => onMeterDecayChange(Number(e.target.value))}
-            onDoubleClick={() => onMeterDecayChange(0.3)}
-            className="flex-1 min-w-[clamp(40px,10vw,80px)] accent-[var(--accent)] cursor-pointer"
-          />
-          <span className={`${smallText} text-white/60 tabular-nums w-[4ch] text-right`}>
-            {meterDecay < 0.15 ? "Slow" : meterDecay > 1.5 ? "Fast" : meterDecay.toFixed(2)}
-          </span>
-        </div>
-      </div>
+      <SettingsGroup title="Background" defaultOpen storageKey="minimeeter.styleTab.background.open">
+        <WindowStateStyleEditor
+          draft={draft.background}
+          onChange={(background) => update({ background })}
+          smallText={smallText}
+          inputCls={inputCls}
+        />
+      </SettingsGroup>
 
-      {/* Fader column width */}
-      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
-        <span className={`${medText} font-semibold text-white/80`}>Fader Width</span>
-        <div className={`flex items-center gap-1 ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
-          <label className="flex items-center gap-1 cursor-pointer select-none">
+      <SettingsGroup title="Faders" storageKey="minimeeter.styleTab.faders.open">
+        <SettingRow label="Width">
+          <label className={checkboxLabelCls}>
             <input
               type="checkbox"
               checked={draft.faderColumnWidth === 0}
               onChange={(e) => update({ faderColumnWidth: e.target.checked ? 0 : 60 })}
-              className="accent-[var(--accent)] cursor-pointer"
+              className={checkboxCls}
             />
             Auto
           </label>
@@ -160,34 +140,52 @@ export default function StyleTab({
                 step="1"
                 value={draft.faderColumnWidth}
                 onChange={(e) => update({ faderColumnWidth: Number(e.target.value) })}
-                className="flex-1 min-w-[clamp(40px,10vw,80px)] accent-[var(--accent)] cursor-pointer"
+                className={sliderCls}
               />
-              <span className="tabular-nums w-[4ch] text-right">{draft.faderColumnWidth}px</span>
+              <span className="tabular-nums w-[5ch] text-right shrink-0">{draft.faderColumnWidth}px</span>
             </>
           )}
-        </div>
-      </div>
+        </SettingRow>
 
-      {/* Output level in titlebar */}
-      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
-        <span className={`${medText} font-semibold text-white/80`}>Titlebar</span>
-        <div className={`flex items-center gap-1 ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
-          <label className="flex items-center gap-1 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={draft.showOutputLevel}
-              onChange={(e) => update({ showOutputLevel: e.target.checked })}
-              className="accent-[var(--accent)] cursor-pointer"
-            />
-            Show A1 output level
-          </label>
-        </div>
-      </div>
+        <SettingRow
+          label="Glass"
+          hint="Frosted glass behind the faders. Lower it to let the background show through more clearly."
+        >
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={draft.faderGlass ?? 1}
+            onChange={(e) => update({ faderGlass: Number(e.target.value) })}
+            onDoubleClick={() => update({ faderGlass: 1 })}
+            className={sliderCls}
+          />
+          <span className={sliderValueCls}>{Math.round((draft.faderGlass ?? 1) * 100)}%</span>
+        </SettingRow>
 
-      {/* Global opacity */}
-      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
-        <span className={`${medText} font-semibold text-white/80`}>Global Opacity</span>
-        <div className={`flex items-center gap-[clamp(4px,1vw,8px)] ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
+        <SettingRow label="Meter decay">
+          <input
+            type="range"
+            min="0.05"
+            max="2"
+            step="0.05"
+            value={meterDecay}
+            onChange={(e) => onMeterDecayChange(Number(e.target.value))}
+            onDoubleClick={() => onMeterDecayChange(0.3)}
+            className={sliderCls}
+          />
+          <span className={sliderValueCls}>
+            {meterDecay < 0.15 ? "Slow" : meterDecay > 1.5 ? "Fast" : meterDecay.toFixed(2)}
+          </span>
+        </SettingRow>
+      </SettingsGroup>
+
+      <SettingsGroup title="Window" storageKey="minimeeter.styleTab.window.open">
+        <SettingRow
+          label="Opacity"
+          hint="Fades the whole window. The visualizer slider only affects the animation."
+        >
           <input
             type="range"
             min="0.2"
@@ -196,101 +194,89 @@ export default function StyleTab({
             value={draft.globalOpacity ?? 1}
             onChange={(e) => update({ globalOpacity: Number(e.target.value) })}
             onDoubleClick={() => update({ globalOpacity: 1 })}
-            className="flex-1 min-w-[clamp(40px,10vw,80px)] accent-[var(--accent)] cursor-pointer"
+            className={sliderCls}
           />
-          <span className={`${smallText} text-white/60 tabular-nums w-[4ch] text-right`}>
-            {Math.round((draft.globalOpacity ?? 1) * 100)}%
-          </span>
-        </div>
-        <span className={`${smallText} text-white/35 pl-[clamp(6px,1.5vw,12px)]`}>
-          Fades the whole window. The visualizer slider only affects the animation.
-        </span>
-      </div>
+          <span className={sliderValueCls}>{Math.round((draft.globalOpacity ?? 1) * 100)}%</span>
+        </SettingRow>
 
-      {/* Window size presets */}
-      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
-        <span className={`${medText} font-semibold text-white/80`}>Window Sizes</span>
-        <span className={`${smallText} text-white/35 pl-[clamp(6px,1.5vw,12px)]`}>
-          Right-click the minimize button to switch between these.
-        </span>
-        {presets.map((preset, idx) => (
-          <div key={idx} className="flex flex-wrap items-center gap-[clamp(3px,0.8vw,6px)] pl-[clamp(6px,1.5vw,12px)]">
+        <SettingRow label="Titlebar">
+          <label className={checkboxLabelCls}>
             <input
-              className={`${inputCls} ${smallText} px-[clamp(3px,0.5vw,6px)] py-[1px] w-[clamp(56px,14vw,96px)]`}
-              value={preset.name}
-              onChange={(e) => updatePreset(idx, { name: e.target.value })}
-              placeholder="Name"
+              type="checkbox"
+              checked={draft.showOutputLevel}
+              onChange={(e) => update({ showOutputLevel: e.target.checked })}
+              className={checkboxCls}
             />
-            <input
-              type="number"
-              min="200"
-              className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(34px,8vw,52px)] text-center`}
-              value={preset.width}
-              onChange={(e) => updatePreset(idx, { width: Number(e.target.value) })}
-            />
-            <span className="text-white/40">x</span>
-            <input
-              type="number"
-              min="275"
-              className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(34px,8vw,52px)] text-center`}
-              value={preset.height}
-              onChange={(e) => updatePreset(idx, { height: Number(e.target.value) })}
-            />
+            Show A1 output level
+          </label>
+        </SettingRow>
+
+        <SettingRow label="Sizes" alignTop hint="Right-click the minimize button to switch between these.">
+          <div className="w-full flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
+            {presets.map((preset, idx) => (
+              <div key={idx} className="flex flex-wrap items-center gap-[clamp(3px,0.8vw,6px)]">
+                <input
+                  className={`${inputCls} ${smallText} px-[clamp(3px,0.5vw,6px)] py-[1px] w-[clamp(56px,14vw,96px)]`}
+                  value={preset.name}
+                  onChange={(e) => updatePreset(idx, { name: e.target.value })}
+                  placeholder="Name"
+                />
+                <input
+                  type="number"
+                  min="200"
+                  className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(34px,8vw,52px)] text-center`}
+                  value={preset.width}
+                  onChange={(e) => updatePreset(idx, { width: Number(e.target.value) })}
+                />
+                <span className="text-white/40">x</span>
+                <input
+                  type="number"
+                  min="275"
+                  className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(34px,8vw,52px)] text-center`}
+                  value={preset.height}
+                  onChange={(e) => updatePreset(idx, { height: Number(e.target.value) })}
+                />
+                <button
+                  className={`${inputCls} ${smallText} px-[clamp(3px,0.5vw,6px)] py-[1px] cursor-pointer text-white/70`}
+                  onClick={() => captureCurrentSize(idx)}
+                  title="Set to the window's current size"
+                >
+                  Use current
+                </button>
+                <button
+                  className="ml-auto text-red-400/70 hover:text-red-400 bg-transparent border-none cursor-pointer text-[clamp(0.6rem,1.8vw,0.8rem)] p-0"
+                  onClick={() => removePreset(idx)}
+                  title="Remove preset"
+                >
+                  x
+                </button>
+              </div>
+            ))}
             <button
-              className={`${inputCls} ${smallText} px-[clamp(3px,0.5vw,6px)] py-[1px] cursor-pointer text-white/70`}
-              onClick={() => captureCurrentSize(idx)}
-              title="Set to the window's current size"
+              className={`flex items-center justify-center gap-1 bg-white/10 hover:bg-white/15 border border-dashed border-white/20 rounded-[4px] ${smallText} text-white/70 py-[clamp(2px,0.5dvh,5px)] cursor-pointer`}
+              onClick={addPreset}
             >
-              Use current
-            </button>
-            <button
-              className="ml-auto text-red-400/70 hover:text-red-400 bg-transparent border-none cursor-pointer text-[clamp(0.6rem,1.8vw,0.8rem)] p-0"
-              onClick={() => removePreset(idx)}
-              title="Remove preset"
-            >
-              x
+              + Add Window Size
             </button>
           </div>
-        ))}
-        <button
-          className={`flex items-center justify-center gap-1 bg-white/10 hover:bg-white/15 border border-dashed border-white/20 rounded-[4px] ${smallText} text-white/70 py-[clamp(2px,0.5dvh,5px)] cursor-pointer ml-[clamp(6px,1.5vw,12px)]`}
-          onClick={addPreset}
-        >
-          + Add Window Size
-        </button>
-      </div>
+        </SettingRow>
 
-      {/* Background */}
-      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)]">
-        <WindowStateStyleEditor
-          label="Background"
-          draft={draft.background}
-          onChange={(background) => update({ background })}
-          smallText={smallText}
-          medText={medText}
-          inputCls={inputCls}
-        />
-      </div>
-
-      {/* Startup */}
-      <div className="bg-white/5 rounded-[4px] p-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
-        <span className={`${medText} font-semibold text-white/80`}>Startup</span>
-        <div className={`flex items-center gap-1 ${smallText} text-white/60 pl-[clamp(6px,1.5vw,12px)]`}>
-          <label className="flex items-center gap-1 cursor-pointer select-none">
+        <SettingRow label="Startup">
+          <label className={checkboxLabelCls}>
             <input
               type="checkbox"
               checked={autostartEnabled}
               onChange={(e) => handleAutostartToggle(e.target.checked)}
-              className="accent-[var(--accent)] cursor-pointer"
+              className={checkboxCls}
             />
             Launch on startup
           </label>
-        </div>
-      </div>
+        </SettingRow>
+      </SettingsGroup>
 
       {/* Reset */}
       <button
-        className={`${smallText} text-white/40 hover:text-white/70 bg-transparent border border-white/10 hover:border-white/20 rounded-[3px] py-[clamp(2px,0.4dvh,4px)] cursor-pointer`}
+        className={`${smallText} text-white/40 hover:text-white/70 bg-transparent border border-white/10 hover:border-white/20 rounded-[3px] py-[clamp(2px,0.4dvh,4px)] cursor-pointer shrink-0`}
         onClick={() => onChange({ ...DEFAULT_STYLE_SETTINGS })}
       >
         Reset to defaults

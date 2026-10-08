@@ -229,12 +229,20 @@ export default function Fader({
       </span>
 
       {/* Fader border + track */}
+      {/* A real border rather than an accent-filled box with a 1px inset, so
+          lowering the panel opacity reveals the background, not accent fill. */}
       <div
-        className="rounded-[4px] p-[1px] w-full flex-1 flex flex-col min-h-0"
-        style={{ backgroundColor: "var(--accent)", maxWidth: "var(--fader-max-w, clamp(42px, 9vw, 68px))" }}
+        className="rounded-[4px] border border-solid w-full flex-1 flex flex-col min-h-0"
+        style={{ borderColor: "var(--accent)", maxWidth: "var(--fader-max-w, clamp(42px, 9vw, 68px))" }}
         onWheel={handleWheel}
       >
-        <div className="bg-[#1e1e1e]/80 rounded-[3px] p-[clamp(4px,1vw,8px)] flex flex-col items-center gap-[clamp(2px,0.5dvh,4px)] flex-1 min-h-0">
+        <div
+          className="rounded-[3px] p-[clamp(4px,1vw,8px)] flex flex-col items-center gap-[clamp(2px,0.5dvh,4px)] flex-1 min-h-0"
+          style={{
+            backgroundColor: "rgba(30, 30, 30, var(--fader-glass-tint, 0.8))",
+            backdropFilter: "var(--fader-glass-filter, blur(12px) saturate(1.5))",
+          }}
+        >
           {/* dB readout */}
           <span className="text-[clamp(0.55rem,2vw,0.75rem)] font-bold text-white/90 tabular-nums whitespace-nowrap">
             {formatDb(value)}
