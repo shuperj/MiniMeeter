@@ -2,7 +2,7 @@
 // mesh pushed out along each vertex's direction by the spikes (see
 // lib/ferroSim), then scaled into a puddle or a ball. The fragment shader
 // rebuilds the surface normal from three nearby samples of the same surface
-// function and shades a black, mirror-glossy liquid lit by the palette (see
+// function and shades a glossy liquid in the palette's colours (see
 // lib/ferroLights). It draws into its own offscreen WebGL canvas, which the
 // scene copies onto its 2D canvas, like the Lava Lamp.
 
@@ -85,13 +85,11 @@ precision highp float;
 precision highp int;
 ${surfaceGlsl(maxSites)}
 uniform vec3 uCam;
-uniform vec3 uKey;
-uniform vec3 uFill;
-uniform vec3 uSky;
+uniform vec3 uFluid;
+uniform vec3 uLight;
+uniform vec3 uShadow;
+uniform vec3 uHighlight;
 uniform vec3 uRim;
-uniform vec3 uWindow;
-uniform vec3 uCeiling;
-uniform vec3 uBase;
 varying vec3 vDir;
 varying vec3 vWorld;
 varying float vSpike;
@@ -108,30 +106,33 @@ void main() {
   if (dot(n, normalize(d / uScale)) < 0.0) n = -n;
 
   vec3 V = normalize(uCam - vWorld);
-  vec3 L1 = normalize(vec3(-0.55, 0.75, 0.5));   // key: upper left, in front
-  vec3 L2 = normalize(vec3(0.7, -0.25, -0.35));  // fill: lower right, behind
-  vec3 L3 = normalize(vec3(0.6, 0.6, -0.7));     // rim: upper right, behind
+  vec3 L1 = normalize(vec3(0.8, 0.45, 0.4));     // the light: right, a little above, in front
+  vec3 L3 = normalize(vec3(-0.35, 0.7, -0.6));   // rim: behind, upper left
   float ndv = max(dot(n, V), 0.0);
-  // A black liquid: almost everything you see is reflection.
-  float fres = 0.06 + 0.94 * pow(1.0 - ndv, 5.0);
-  vec3 Rv = reflect(-V, n);
-  float sky = smoothstep(-0.3, 0.7, Rv.y);
-  // A bright horizontal window band in the reflection, the stripes ferrofluid photos have.
-  float win = exp(-pow((Rv.y - 0.38) / 0.11, 2.0)) * smoothstep(-0.3, 0.4, Rv.z);
-  // A soft ceiling light above, so surfaces facing up still show a reflection.
-  float ceil = smoothstep(0.25, 0.95, Rv.y) * 0.55;
-  vec3 env = uSky * sky + uWindow * win * 1.3 + uCeiling * ceil;
-  vec3 H1 = normalize(L1 + V);
-  vec3 H2 = normalize(L2 + V);
-  vec3 H3 = normalize(L3 + V);
-  float s1 = pow(max(dot(n, H1), 0.0), 90.0);
-  float sheen = pow(max(dot(n, H1), 0.0), 8.0) * 0.22;
-  float s2 = pow(max(dot(n, H2), 0.0), 40.0) * 0.7;
-  float s3 = pow(max(dot(n, H3), 0.0), 30.0) * 0.8;
-  float diff = max(dot(n, L1), 0.0) * 0.14 + max(dot(n, L2), 0.0) * 0.05;
+
+  // Three tones: the lit side on the right takes the light's colour, the
+  // far side on the left the shadow's, and the fluid itself shows between.
+  float facing = dot(n, L1);
+  float lit = smoothstep(-0.05, 0.75, facing);
+  float shade = smoothstep(-0.05, 0.75, -facing);
+  vec3 body = mix(uFluid, uLight, lit * 0.6);
+  body = mix(body, uShadow, shade * 0.8);
+  body *= (0.65 + 0.4 * lit) * (1.0 - 0.3 * shade);
   // The bare surface between spikes sits a little in shadow.
-  float ao = 0.7 + 0.3 * clamp(vSpike / 0.15, 0.0, 1.0);
-  vec3 col = uBase * (0.45 + diff) + env * fres * ao + uKey * (s1 + sheen) + uFill * s2 + uRim * s3;
+  body *= 0.65 + 0.35 * clamp(vSpike / 0.15, 0.0, 1.0);
+
+  // Gloss: a Fresnel reflection of a bright window band and a soft ceiling,
+  // the hotspot of the light, and the rim light from behind.
+  float fres = 0.04 + 0.96 * pow(1.0 - ndv, 5.0);
+  vec3 Rv = reflect(-V, n);
+  float win = exp(-pow((Rv.y - 0.38) / 0.11, 2.0)) * smoothstep(-0.3, 0.4, Rv.z);
+  float ceiling = smoothstep(0.25, 0.95, Rv.y) * 0.35;
+  vec3 H1 = normalize(L1 + V);
+  vec3 H3 = normalize(L3 + V);
+  float s1 = pow(max(dot(n, H1), 0.0), 90.0) * 0.9;
+  float sheen = pow(max(dot(n, H1), 0.0), 8.0) * 0.15;
+  float s3 = pow(max(dot(n, H3), 0.0), 24.0) * 0.9;
+  vec3 col = body + uHighlight * ((win + ceiling) * fres + s1 + sheen) + uRim * s3;
   gl_FragColor = vec4(min(col, vec3(1.0)), 1.0);
 }`;
 
@@ -226,8 +227,8 @@ export function createFerroGl(maxSites: number): FerroGl | null {
   const u = (name: string) => gl.getUniformLocation(program, name);
   const loc = {
     viewProj: u("uViewProj"), spike: u("uSpike"), count: u("uCount"), scale: u("uScale"), gather: u("uGather"),
-    cam: u("uCam"), key: u("uKey"), fill: u("uFill"), sky: u("uSky"), rim: u("uRim"),
-    window: u("uWindow"), ceiling: u("uCeiling"), base: u("uBase"),
+    cam: u("uCam"), fluid: u("uFluid"), light: u("uLight"), shadow: u("uShadow"),
+    highlight: u("uHighlight"), rim: u("uRim"),
   };
   const spikeData = new Float32Array(maxSites * 4);
   const setColor = (location: WebGLUniformLocation | null, c: readonly [number, number, number]) =>
@@ -253,13 +254,11 @@ export function createFerroGl(maxSites: number): FerroGl | null {
       gl.uniform1i(loc.count, count);
       gl.uniform3f(loc.scale, scale[0], scale[1], scale[2]);
       gl.uniform1f(loc.gather, gather);
-      setColor(loc.key, lights.key);
-      setColor(loc.fill, lights.fill);
-      setColor(loc.sky, lights.sky);
+      setColor(loc.fluid, lights.fluid);
+      setColor(loc.light, lights.light);
+      setColor(loc.shadow, lights.shadow);
+      setColor(loc.highlight, lights.highlight);
       setColor(loc.rim, lights.rim);
-      setColor(loc.window, lights.window);
-      setColor(loc.ceiling, lights.ceiling);
-      setColor(loc.base, lights.base);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0);

@@ -58,20 +58,23 @@ function drawFlat(ctx: CanvasRenderingContext2D, w: number, h: number, state: Fe
   const rx = R * sx;
   const ry = R * Math.hypot(sy * cosE, sz * sinE);
 
-  const body = ctx.createRadialGradient(cx - rx * 0.35, cy - ry * 0.4, 0, cx, cy, Math.max(rx, ry) * 1.3);
-  body.addColorStop(0, rgb(lights.key, 0.55));
-  body.addColorStop(0.3, rgb(lights.base));
-  body.addColorStop(1, "rgb(3,4,7)");
+  // Lit from the right, shadowed on the left, the fluid's colour between.
+  const mixc = (a: readonly number[], b: readonly number[], t: number): [number, number, number] =>
+    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const body = ctx.createLinearGradient(cx - rx, cy, cx + rx, cy);
+  body.addColorStop(0, rgb(mixc(lights.fluid, lights.shadow, 0.8).map((v) => v * 0.7) as [number, number, number]));
+  body.addColorStop(0.45, rgb(lights.fluid));
+  body.addColorStop(1, rgb(mixc(lights.fluid, lights.light, 0.6)));
   ctx.fillStyle = body;
   ctx.beginPath();
   ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = rgb(lights.window, 0.5);
+  ctx.strokeStyle = rgb(lights.highlight, 0.5);
   ctx.lineWidth = Math.max(1, R * 0.015);
   ctx.stroke();
 
-  ctx.fillStyle = rgb(lights.base);
-  ctx.strokeStyle = rgb(lights.key, 0.8);
+  ctx.fillStyle = rgb(lights.fluid);
+  ctx.strokeStyle = rgb(lights.highlight, 0.8);
   for (const s of state.sites) {
     if (s.h < 0.03) continue;
     // Facing the camera, or on the far side.
@@ -101,7 +104,7 @@ function drawFlat(ctx: CanvasRenderingContext2D, w: number, h: number, state: Fe
     ctx.lineTo(bx + uy * half, by - ux * half);
     ctx.closePath();
     ctx.fill();
-    ctx.globalAlpha = 0.3 + 0.5 * Math.max(0, -ux * 0.6 - uy * 0.8);
+    ctx.globalAlpha = 0.3 + 0.5 * Math.max(0, ux * 0.6 - uy * 0.8);
     ctx.stroke();
     ctx.globalAlpha = 1;
   }
