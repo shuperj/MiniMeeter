@@ -12,6 +12,7 @@ const SPECTRUM_PRESETS: ReadonlySet<VisualizerPreset> = new Set<VisualizerPreset
   "noise-flow",
   "geometric-pulse",
   "lava-lamp",
+  "ferrofluid",
   "aurora",
   "disco-ball",
   "pipes",

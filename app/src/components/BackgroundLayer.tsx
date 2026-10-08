@@ -8,6 +8,7 @@ import GradientMeshVisualizer from "./visualizers/GradientMeshVisualizer";
 import NoiseFlowVisualizer from "./visualizers/NoiseFlowVisualizer";
 import GeometricPulseVisualizer from "./visualizers/GeometricPulseVisualizer";
 import LavaLampVisualizer from "./visualizers/LavaLampVisualizer";
+import FerrofluidVisualizer from "./visualizers/FerrofluidVisualizer";
 import AuroraVisualizer from "./visualizers/AuroraVisualizer";
 import DiscoBallVisualizer from "./visualizers/DiscoBallVisualizer";
 import PipesVisualizer from "./visualizers/PipesVisualizer";
@@ -107,6 +108,8 @@ function VisualizerSwitch({
       return <GeometricPulseVisualizer {...props} />;
     case "lava-lamp":
       return <LavaLampVisualizer {...props} />;
+    case "ferrofluid":
+      return <FerrofluidVisualizer {...props} />;
     case "aurora":
       return <AuroraVisualizer {...props} />;
     case "disco-ball":

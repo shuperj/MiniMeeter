@@ -25,6 +25,7 @@ const VISUALIZER_PRESETS: { value: VisualizerPreset; label: string }[] = [
   { value: "noise-flow", label: "Noise Flow" },
   { value: "geometric-pulse", label: "Geometric Pulse" },
   { value: "lava-lamp", label: "Lava Lamp" },
+  { value: "ferrofluid", label: "Ferrofluid" },
   { value: "aurora", label: "Aurora" },
   { value: "disco-ball", label: "Disco Ball" },
   { value: "pipes", label: "Pipes" },
