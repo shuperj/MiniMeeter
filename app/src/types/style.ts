@@ -28,12 +28,9 @@ export type VisualizerPreset =
   | "xmb-smoke"
   | "starfield"
   | "matrix-rain"
-  | "gradient-mesh"
   | "noise-flow"
-  | "geometric-pulse"
   | "lava-lamp"
   | "ferrofluid"
-  | "aurora"
   | "disco-ball"
   | "pipes";
 

@@ -4,12 +4,9 @@ import type { SpectrumState } from "../hooks/useSpectrum";
 import XmbSmokeVisualizer from "./visualizers/XmbSmokeVisualizer";
 import StarfieldVisualizer from "./visualizers/StarfieldVisualizer";
 import MatrixRainVisualizer from "./visualizers/MatrixRainVisualizer";
-import GradientMeshVisualizer from "./visualizers/GradientMeshVisualizer";
 import NoiseFlowVisualizer from "./visualizers/NoiseFlowVisualizer";
-import GeometricPulseVisualizer from "./visualizers/GeometricPulseVisualizer";
 import LavaLampVisualizer from "./visualizers/LavaLampVisualizer";
 import FerrofluidVisualizer from "./visualizers/FerrofluidVisualizer";
-import AuroraVisualizer from "./visualizers/AuroraVisualizer";
 import DiscoBallVisualizer from "./visualizers/DiscoBallVisualizer";
 import PipesVisualizer from "./visualizers/PipesVisualizer";
 
@@ -100,18 +97,12 @@ function VisualizerSwitch({
       return <StarfieldVisualizer {...props} />;
     case "matrix-rain":
       return <MatrixRainVisualizer {...props} />;
-    case "gradient-mesh":
-      return <GradientMeshVisualizer {...props} />;
     case "noise-flow":
       return <NoiseFlowVisualizer {...props} />;
-    case "geometric-pulse":
-      return <GeometricPulseVisualizer {...props} />;
     case "lava-lamp":
       return <LavaLampVisualizer {...props} />;
     case "ferrofluid":
       return <FerrofluidVisualizer {...props} />;
-    case "aurora":
-      return <AuroraVisualizer {...props} />;
     case "disco-ball":
       return <DiscoBallVisualizer {...props} />;
     case "pipes":

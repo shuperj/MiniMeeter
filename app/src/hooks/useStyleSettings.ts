@@ -47,6 +47,10 @@ function migrateBackground(raw: any): BackgroundStyle {
   if (bg.visualizerPreset === "plasma" || bg.visualizerPreset === "color-field") {
     bg.visualizerPreset = "xmb-smoke";
   }
+  // Aurora, Geometric Pulse and Gradient Mesh gave way to Ferrofluid.
+  if (["aurora", "geometric-pulse", "gradient-mesh"].includes(bg.visualizerPreset)) {
+    bg.visualizerPreset = "ferrofluid";
+  }
 
   if (!["none", "pixelate", "crt"].includes(bg.visualizerFilter)) {
     bg.visualizerFilter = "none";
