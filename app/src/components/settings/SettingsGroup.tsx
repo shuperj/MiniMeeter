@@ -103,23 +103,50 @@ interface SegmentedProps<T extends string> {
   onChange: (value: T) => void;
 }
 
+function Chip({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
+  return (
+    <button
+      className={`px-[clamp(4px,0.8vw,8px)] py-[1px] rounded-[3px] border-none cursor-pointer ${smallText} font-medium`}
+      style={{
+        backgroundColor: on ? "var(--accent)" : "rgba(255,255,255,0.1)",
+        color: on ? "var(--accent-fg)" : "rgba(255,255,255,0.7)",
+      }}
+      aria-pressed={on}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  );
+}
+
 /** A row of accent-filled toggle buttons, one of which is selected. */
 export function Segmented<T extends string>({ options, value, onChange }: SegmentedProps<T>) {
   return (
     <div className="flex items-center flex-wrap gap-[clamp(2px,0.5vw,6px)]">
       {options.map((o) => (
-        <button
-          key={o.value}
-          className={`px-[clamp(4px,0.8vw,8px)] py-[1px] rounded-[3px] border-none cursor-pointer ${smallText} font-medium`}
-          style={{
-            backgroundColor: value === o.value ? "var(--accent)" : "rgba(255,255,255,0.1)",
-            color: value === o.value ? "var(--accent-fg)" : "rgba(255,255,255,0.7)",
-          }}
-          aria-pressed={value === o.value}
-          onClick={() => onChange(o.value)}
-        >
-          {o.label}
-        </button>
+        <Chip key={o.value} label={o.label} on={value === o.value} onClick={() => onChange(o.value)} />
+      ))}
+    </div>
+  );
+}
+
+interface TogglesProps<T extends string> {
+  options: readonly { value: T; label: string }[];
+  values: readonly T[];
+  /** Called with the new set, kept in the options' order. */
+  onChange: (values: T[]) => void;
+}
+
+/** Like Segmented, but any number of the buttons can be on at once. */
+export function Toggles<T extends string>({ options, values, onChange }: TogglesProps<T>) {
+  const toggle = (v: T) => {
+    const next = values.includes(v) ? values.filter((x) => x !== v) : [...values, v];
+    onChange(options.map((o) => o.value).filter((x) => next.includes(x)));
+  };
+  return (
+    <div className="flex items-center flex-wrap gap-[clamp(2px,0.5vw,6px)]">
+      {options.map((o) => (
+        <Chip key={o.value} label={o.label} on={values.includes(o.value)} onClick={() => toggle(o.value)} />
       ))}
     </div>
   );

@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { VisualizerFilter, VisualizerPreset } from "../types/style";
+import type { CelEdges, VisualizerFilter, VisualizerPreset } from "../types/style";
 import type { SpectrumState } from "../hooks/useSpectrum";
 import XmbSmokeVisualizer from "./visualizers/XmbSmokeVisualizer";
 import StarfieldVisualizer from "./visualizers/StarfieldVisualizer";
@@ -21,7 +21,8 @@ interface BackgroundLayerProps {
   visualizerIntensity: number;
   visualizerSpeed: number;
   visualizerFps: number;
-  visualizerFilter: VisualizerFilter;
+  visualizerFilters: readonly VisualizerFilter[];
+  visualizerCelEdges: CelEdges;
   masterLevel: number;
   spectrum: RefObject<SpectrumState>;
 }
@@ -37,7 +38,8 @@ export default function BackgroundLayer({
   visualizerIntensity,
   visualizerSpeed,
   visualizerFps,
-  visualizerFilter,
+  visualizerFilters,
+  visualizerCelEdges,
   masterLevel,
   spectrum,
 }: BackgroundLayerProps) {
@@ -57,7 +59,8 @@ export default function BackgroundLayer({
           intensity={visualizerIntensity}
           speed={visualizerSpeed}
           fps={visualizerFps}
-          filter={visualizerFilter}
+          filters={visualizerFilters}
+          celEdges={visualizerCelEdges}
           paused={visualizerPaused}
           masterLevel={masterLevel}
           spectrum={spectrum}
@@ -73,7 +76,8 @@ function VisualizerSwitch({
   intensity,
   speed,
   fps,
-  filter,
+  filters,
+  celEdges,
   paused,
   masterLevel,
   spectrum,
@@ -83,12 +87,13 @@ function VisualizerSwitch({
   intensity: number;
   speed: number;
   fps: number;
-  filter: VisualizerFilter;
+  filters: readonly VisualizerFilter[];
+  celEdges: CelEdges;
   paused: boolean;
   masterLevel: number;
   spectrum: RefObject<SpectrumState>;
 }) {
-  const props = { opacity, intensity, speed, fps, filter, paused, masterLevel, spectrum };
+  const props = { opacity, intensity, speed, fps, filters, celEdges, paused, masterLevel, spectrum };
 
   switch (preset) {
     case "xmb-smoke":

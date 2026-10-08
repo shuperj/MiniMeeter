@@ -1,7 +1,7 @@
-import { VISUALIZER_FPS_OPTIONS, type VisualizerFilter, type VisualizerFps } from "../../types/style";
+import { VISUALIZER_FPS_OPTIONS, type CelEdges, type VisualizerFilter, type VisualizerFps } from "../../types/style";
 import type { BackgroundStyle, BackgroundMode, VisualizerPreset, VisualizerColorSource, UnfocusedVisualizerMode } from "../../types/style";
 import { PALETTE_MAX, PALETTE_MIN } from "../../lib/color";
-import { SettingRow, Segmented } from "./SettingsGroup";
+import { SettingRow, Segmented, Toggles } from "./SettingsGroup";
 import { sliderCls, sliderValueCls, swatchCls } from "./shared";
 
 interface WindowStateStyleEditorProps {
@@ -42,9 +42,14 @@ const VIZ_UNFOCUSED: { value: UnfocusedVisualizerMode; label: string }[] = [
 ];
 
 const VIZ_FILTERS: { value: VisualizerFilter; label: string }[] = [
-  { value: "none", label: "None" },
   { value: "pixelate", label: "Pixelate" },
+  { value: "cel", label: "Cel" },
   { value: "crt", label: "CRT" },
+];
+
+const CEL_EDGES: { value: CelEdges; label: string }[] = [
+  { value: "dark", label: "Dark" },
+  { value: "light", label: "Light" },
 ];
 
 /** The rows of the Background settings group (mode, then the mode's own
@@ -213,12 +218,22 @@ export default function WindowStateStyleEditor({ draft, onChange, smallText, inp
           </SettingRow>
 
           <SettingRow label="Filter" title="Pixelate and CRT also lower the render resolution, so they cost less">
-            <Segmented
+            <Toggles
               options={VIZ_FILTERS}
-              value={draft.visualizerFilter}
-              onChange={(visualizerFilter) => update({ visualizerFilter })}
+              values={draft.visualizerFilters}
+              onChange={(visualizerFilters) => update({ visualizerFilters })}
             />
           </SettingRow>
+
+          {draft.visualizerFilters.includes("cel") && (
+            <SettingRow label="Edges" title="The colour of Cel's outlines.">
+              <Segmented
+                options={CEL_EDGES}
+                value={draft.visualizerCelEdges}
+                onChange={(visualizerCelEdges) => update({ visualizerCelEdges })}
+              />
+            </SettingRow>
+          )}
 
           <SettingRow label="Frame rate" title="Higher is smoother; lower saves CPU and GPU. The second choice applies while another window has focus.">
             <select

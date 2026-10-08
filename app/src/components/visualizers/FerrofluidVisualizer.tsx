@@ -19,7 +19,7 @@ function createFerrofluid(ctx: CanvasRenderingContext2D): Scene {
       if (gl && w > 0 && h > 0) gl.resize(w, h);
     },
 
-    draw({ w, h, dt, motion, level, reactivity, palette, spectrum }) {
+    draw({ w, h, dt, motion, level, reactivity, palette, spectrum, cel }) {
       const { groups, bass, mid, treble, onset } = bands(spectrum, level, dt);
       if (palette !== paletteSource) {
         paletteSource = palette;
@@ -32,7 +32,7 @@ function createFerrofluid(ctx: CanvasRenderingContext2D): Scene {
 
       ctx.clearRect(0, 0, w, h);
       if (gl) {
-        gl.render({ sites: state.sites, scale: bodyScale(state), gather: state.gather, lights: lights! });
+        gl.render({ sites: state.sites, scale: bodyScale(state), gather: state.gather, lights: lights!, cel });
         ctx.drawImage(gl.canvas, 0, 0);
         return;
       }
@@ -111,6 +111,7 @@ function drawFlat(ctx: CanvasRenderingContext2D, w: number, h: number, state: Fe
 }
 
 export default function FerrofluidVisualizer(props: VisualizerProps) {
-  // Full resolution: the shading runs on the GPU (see ferroGl).
-  return <VisualizerCanvas {...props} createScene={createFerrofluid} />;
+  // Full resolution: the shading runs on the GPU (see ferroGl), which also
+  // draws the Cel look itself, in 3D, rather than as a pass over the pixels.
+  return <VisualizerCanvas {...props} createScene={createFerrofluid} celShaded />;
 }

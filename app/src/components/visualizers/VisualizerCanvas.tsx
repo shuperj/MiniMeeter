@@ -2,8 +2,9 @@ import { useRef, useEffect } from "react";
 import type { RefObject } from "react";
 import { createFramePacer, frameDelta, VISUALIZER_FPS } from "../../lib/frameLoop";
 import type { SpectrumState } from "../../hooks/useSpectrum";
-import type { VisualizerFilter } from "../../types/style";
+import type { CelEdges, VisualizerFilter } from "../../types/style";
 import { filterResolution } from "../../lib/visualizerFilter";
+import { createCelGl, type CelGl } from "./celGl";
 
 // CRT look: scanlines and a vignette as a static overlay (composited, not
 // redrawn), plus a slight red/blue fringe and a punchier picture on the canvas.
@@ -16,6 +17,8 @@ const CRT_CANVAS_FILTER =
 /** Spectrum older than this is treated as unavailable (capture stopped). */
 const SPECTRUM_STALE_MS = 500;
 
+const NO_FILTERS: readonly VisualizerFilter[] = [];
+
 export interface VisualizerProps {
   opacity: number;
   /** Reactivity setting, 0..1. */
@@ -24,8 +27,10 @@ export interface VisualizerProps {
   speed?: number;
   /** Frame rate cap. */
   fps?: number;
-  /** Post effect: pixelate or CRT. */
-  filter?: VisualizerFilter;
+  /** Post effects: pixelate, cel, CRT, in any combination. */
+  filters?: readonly VisualizerFilter[];
+  /** Outline colour for the Cel filter. */
+  celEdges?: CelEdges;
   masterLevel: number;
   paused?: boolean;
   /** Live frequency bands, for visualizers that use them (see useSpectrum). */
@@ -61,6 +66,11 @@ export interface Frame {
    * flowing — visualizers fall back to the level then.
    */
   spectrum: Float32Array | null;
+  /**
+   * The Cel filter's edge colour while it is on, else null. Only scenes
+   * rendered with `celShaded` need it: they draw the look themselves.
+   */
+  cel: CelEdges | null;
 }
 
 export interface Scene {
@@ -98,6 +108,12 @@ function readVizPalette(rgb: string): readonly string[] {
  * Shared canvas + frame loop for the background visualizers. Draws at a capped
  * rate (see lib/frameLoop), keeps scene state across pause/resume, and renders
  * at `resolution` × the CSS size so soft scenes can use fewer pixels.
+ *
+ * The Cel filter is a pass over the finished frame (see celGl) into a second
+ * canvas shown in the scene's place, so scenes that paint over their previous
+ * frame (trails) never see their own filtered output. A scene that draws the
+ * cel look itself (Ferrofluid, in 3D) is rendered with `celShaded` and gets
+ * the edge colour in its frame instead.
  */
 export default function VisualizerCanvas({
   opacity,
@@ -106,12 +122,15 @@ export default function VisualizerCanvas({
   paused = false,
   createScene,
   resolution = 1,
+  celShaded = false,
   spectrum,
   speed = 0.5,
   fps = VISUALIZER_FPS,
-  filter = "none",
-}: VisualizerProps & { createScene: SceneFactory; resolution?: number }) {
+  filters = NO_FILTERS,
+  celEdges = "dark",
+}: VisualizerProps & { createScene: SceneFactory; resolution?: number; celShaded?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const celCanvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<Scene | null>(null);
   const levelRef = useRef(masterLevel);
   const intensityRef = useRef(intensity);
@@ -122,9 +141,17 @@ export default function VisualizerCanvas({
   const fpsRef = useRef(fps);
   useEffect(() => { fpsRef.current = fps; }, [fps]);
   // A filter can lower the resolution (never raise it).
-  const res = filterResolution(resolution, filter);
+  const res = filterResolution(resolution, filters);
   const speedRef = useRef(1);
   useEffect(() => { speedRef.current = Math.pow(2, (speed - 0.5) * 3); }, [speed]);
+  // Cel: the edge colour while it is on, and whether the pass runs here.
+  const cel = filters.includes("cel") ? celEdges : null;
+  const celPass = cel !== null && !celShaded;
+  const celRef = useRef<CelEdges | null>(cel);
+  const celPassRef = useRef(celPass);
+  useEffect(() => { celRef.current = cel; celPassRef.current = celPass; }, [cel, celPass]);
+  // The pass's renderer, made on first use (undefined = not tried yet).
+  const celGlRef = useRef<CelGl | null | undefined>(undefined);
 
   useEffect(() => {
     if (paused) return;
@@ -154,10 +181,20 @@ export default function VisualizerCanvas({
     let raf = 0;
     let last = performance.now();
     const pace = createFramePacer();
+    let debugFrames = 0;
+    let debugSince = performance.now();
 
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
       if (!pace(now, fpsRef.current)) return;
+      // TEMP DEBUG (focus investigation): report the real draw rate.
+      debugFrames++;
+      if (now - debugSince > 2000) {
+        const msg = `drawn ${(debugFrames * 1000 / (now - debugSince)).toFixed(1)} fps (cap ${fpsRef.current})`;
+        import("@tauri-apps/api/core").then(({ invoke }) => invoke("debug_log", { msg })).catch(() => {});
+        debugFrames = 0;
+        debugSince = now;
+      }
       const elapsed = now - last;
       last = now;
 
@@ -180,7 +217,17 @@ export default function VisualizerCanvas({
           spectrum?.current && now - spectrum.current.updatedAt < SPECTRUM_STALE_MS
             ? spectrum.current.bands
             : null,
+        cel: celRef.current,
       });
+
+      if (celPassRef.current && celRef.current && celCanvasRef.current) {
+        if (celGlRef.current === undefined) celGlRef.current = createCelGl(celCanvasRef.current);
+        const celGl = celGlRef.current;
+        if (celGl) {
+          if (celGl.canvas.width !== w || celGl.canvas.height !== h) celGl.resize(w, h);
+          celGl.render(canvas, celRef.current);
+        }
+      }
     };
 
     raf = requestAnimationFrame(tick);
@@ -191,6 +238,11 @@ export default function VisualizerCanvas({
     // createScene is a module-level factory per visualizer, so it never changes.
   }, [paused, res]);
 
+  const crt = filters.includes("crt");
+  // Chunky filters show their pixels crisp instead of smoothing them over.
+  const imageRendering = filters.includes("pixelate") || crt ? "pixelated" : undefined;
+  const canvasFilter = crt ? CRT_CANVAS_FILTER : undefined;
+
   return (
     <>
       <canvas
@@ -198,12 +250,21 @@ export default function VisualizerCanvas({
         className="absolute inset-0 w-full h-full"
         style={{
           opacity,
-          // Filters show their pixels crisp instead of smoothing them over.
-          imageRendering: filter === "none" ? undefined : "pixelated",
-          filter: filter === "crt" ? CRT_CANVAS_FILTER : undefined,
+          imageRendering,
+          filter: canvasFilter,
+          // Under the cel pass the scene still draws here, but only its
+          // filtered copy is shown. (No WebGL: the pass is skipped, so show it.)
+          visibility: celPass && celGlRef.current !== null ? "hidden" : undefined,
         }}
       />
-      {filter === "crt" && (
+      {celPass && (
+        <canvas
+          ref={celCanvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ opacity, imageRendering, filter: canvasFilter }}
+        />
+      )}
+      {crt && (
         <div className="absolute inset-0 pointer-events-none" style={{ background: CRT_OVERLAY, opacity }} />
       )}
     </>

@@ -9,6 +9,7 @@
 import { cubeSphere } from "../../lib/cubeSphere";
 import type { FerroSite } from "../../lib/ferroSim";
 import type { FerroLights } from "../../lib/ferroLights";
+import type { CelEdges } from "../../types/style";
 
 export interface FerroGlFrame {
   sites: readonly FerroSite[];
@@ -17,6 +18,8 @@ export interface FerroGlFrame {
   /** 0 = puddle .. 1 = ball. */
   gather: number;
   lights: FerroLights;
+  /** Cel-shade in 3D (flat tone bands, ink outlines) with this edge colour; null for the glossy look. */
+  cel: CelEdges | null;
 }
 
 export interface FerroGl {
@@ -90,6 +93,8 @@ uniform vec3 uLight;
 uniform vec3 uShadow;
 uniform vec3 uHighlight;
 uniform vec3 uRim;
+uniform float uCel;      // 1 = cel-shaded
+uniform vec3 uInk;       // cel outline colour
 varying vec3 vDir;
 varying vec3 vWorld;
 varying float vSpike;
@@ -112,14 +117,22 @@ void main() {
 
   // Three tones: the lit side on the right takes the light's colour, the
   // far side on the left the shadow's, and the fluid itself shows between.
+  bool cel = uCel > 0.5;
   float facing = dot(n, L1);
   float lit = smoothstep(-0.05, 0.75, facing);
   float shade = smoothstep(-0.05, 0.75, -facing);
+  float valley = clamp(vSpike / 0.15, 0.0, 1.0);
+  if (cel) {
+    // Flat tone bands with hard edges between them.
+    lit = step(0.3, facing);
+    shade = step(0.3, -facing);
+    valley = step(0.5, valley);
+  }
   vec3 body = mix(uFluid, uLight, lit * 0.6);
   body = mix(body, uShadow, shade * 0.8);
   body *= (0.65 + 0.4 * lit) * (1.0 - 0.3 * shade);
   // The bare surface between spikes sits a little in shadow.
-  body *= 0.65 + 0.35 * clamp(vSpike / 0.15, 0.0, 1.0);
+  body *= 0.65 + 0.35 * valley;
 
   // Gloss: a Fresnel reflection of a bright window band and a soft ceiling,
   // the hotspot of the light, and the rim light from behind.
@@ -132,7 +145,22 @@ void main() {
   float s1 = pow(max(dot(n, H1), 0.0), 90.0) * 0.9;
   float sheen = pow(max(dot(n, H1), 0.0), 8.0) * 0.15;
   float s3 = pow(max(dot(n, H3), 0.0), 24.0) * 0.9;
+  if (cel) {
+    // A flat hotspot and a flat reflection band; no soft sheen.
+    s1 = step(0.4, s1) * 0.9;
+    sheen = 0.0;
+    win = step(0.5, win);
+    ceiling = 0.0;
+    fres = step(0.45, fres) * 0.6;
+    s3 = step(0.4, s3) * 0.9;
+  }
   vec3 col = body + uHighlight * ((win + ceiling) * fres + s1 + sheen) + uRim * s3;
+  if (cel) {
+    // Ink where the surface turns away from the viewer: silhouettes and the
+    // flanks of every spike.
+    float ink = 1.0 - smoothstep(0.06, 0.17, ndv);
+    col = mix(col, uInk, ink);
+  }
   gl_FragColor = vec4(min(col, vec3(1.0)), 1.0);
 }`;
 
@@ -228,7 +256,7 @@ export function createFerroGl(maxSites: number): FerroGl | null {
   const loc = {
     viewProj: u("uViewProj"), spike: u("uSpike"), count: u("uCount"), scale: u("uScale"), gather: u("uGather"),
     cam: u("uCam"), fluid: u("uFluid"), light: u("uLight"), shadow: u("uShadow"),
-    highlight: u("uHighlight"), rim: u("uRim"),
+    highlight: u("uHighlight"), rim: u("uRim"), cel: u("uCel"), ink: u("uInk"),
   };
   const spikeData = new Float32Array(maxSites * 4);
   const setColor = (location: WebGLUniformLocation | null, c: readonly [number, number, number]) =>
@@ -244,7 +272,7 @@ export function createFerroGl(maxSites: number): FerroGl | null {
       gl.uniformMatrix4fv(loc.viewProj, false, cam.viewProj);
       gl.uniform3f(loc.cam, cam.eye[0], cam.eye[1], cam.eye[2]);
     },
-    render({ sites, scale, gather, lights }) {
+    render({ sites, scale, gather, lights, cel }) {
       const count = Math.min(maxSites, sites.length);
       for (let i = 0; i < count; i++) {
         const s = sites[i];
@@ -259,6 +287,9 @@ export function createFerroGl(maxSites: number): FerroGl | null {
       setColor(loc.shadow, lights.shadow);
       setColor(loc.highlight, lights.highlight);
       setColor(loc.rim, lights.rim);
+      gl.uniform1f(loc.cel, cel ? 1 : 0);
+      const ink = cel === "light" ? 1 : 0.03;
+      gl.uniform3f(loc.ink, ink, ink, ink);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.drawElements(gl.TRIANGLES, mesh.indices.length, gl.UNSIGNED_SHORT, 0);

@@ -15,9 +15,14 @@ export type BackgroundMode = "solid" | "acrylic" | "visualizer";
  */
 export type UnfocusedVisualizerMode = "animated" | "60" | "30" | "paused";
 
+/** Post effects over the visualizer; any combination can be on at once. */
+export type VisualizerFilter = "pixelate" | "cel" | "crt";
+/** Every filter, in the order they are applied. */
+export const VISUALIZER_FILTERS: readonly VisualizerFilter[] = ["pixelate", "cel", "crt"];
+/** Outline colour for the Cel filter. */
+export type CelEdges = "dark" | "light";
+
 /** Caps above the display's refresh rate just draw on every refresh. */
-/** Post effect over the visualizer. */
-export type VisualizerFilter = "none" | "pixelate" | "crt";
 
 export const VISUALIZER_FPS_OPTIONS = [30, 60, 120, 144, 240] as const;
 export type VisualizerFps = (typeof VISUALIZER_FPS_OPTIONS)[number];
@@ -46,7 +51,9 @@ export interface BackgroundStyle {
   visualizerSpeed: number;
   /** Frame rate cap while focused (and while unfocused in "animated" mode). */
   visualizerFps: VisualizerFps;
-  visualizerFilter: VisualizerFilter;
+  /** Active filters, in application order (see VISUALIZER_FILTERS). */
+  visualizerFilters: VisualizerFilter[];
+  visualizerCelEdges: CelEdges;
   visualizerColorSource: VisualizerColorSource;
   visualizerColor: string;
   /** 2-5 "#rrggbb" colors, used when visualizerColorSource is "palette". */
@@ -91,7 +98,8 @@ export const DEFAULT_BACKGROUND_STYLE: BackgroundStyle = {
   visualizerIntensity: 0.5,
   visualizerSpeed: 0.5,
   visualizerFps: 30,
-  visualizerFilter: "none",
+  visualizerFilters: [],
+  visualizerCelEdges: "dark",
   visualizerColorSource: "accent",
   visualizerColor: "#3a86ff",
   visualizerPalette: DEFAULT_VISUALIZER_PALETTE,

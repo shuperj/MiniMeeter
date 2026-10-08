@@ -3,6 +3,7 @@ import { load } from "@tauri-apps/plugin-store";
 import type { StyleSettings, BackgroundStyle } from "../types/style";
 import { DEFAULT_STYLE_SETTINGS, DEFAULT_BACKGROUND_STYLE, DEFAULT_VISUALIZER_PALETTE, VISUALIZER_FPS_OPTIONS } from "../types/style";
 import { normalizePalette } from "../lib/color";
+import { normalizeFilters } from "../lib/visualizerFilter";
 
 const STYLE_KEY = "style";
 
@@ -52,8 +53,14 @@ function migrateBackground(raw: any): BackgroundStyle {
     bg.visualizerPreset = "ferrofluid";
   }
 
-  if (!["none", "pixelate", "crt"].includes(bg.visualizerFilter)) {
-    bg.visualizerFilter = "none";
+  // The single Filter choice became a set of filters that stack.
+  if (!Array.isArray(raw.visualizerFilters) && typeof raw.visualizerFilter === "string") {
+    bg.visualizerFilters = [raw.visualizerFilter];
+  }
+  delete bg.visualizerFilter;
+  bg.visualizerFilters = normalizeFilters(bg.visualizerFilters);
+  if (bg.visualizerCelEdges !== "light") {
+    bg.visualizerCelEdges = "dark";
   }
   if (!VISUALIZER_FPS_OPTIONS.includes(bg.visualizerFps)) {
     bg.visualizerFps = DEFAULT_BACKGROUND_STYLE.visualizerFps;

@@ -98,7 +98,8 @@ export default function App() {
       visualizerIntensity: bg.visualizerIntensity,
       visualizerSpeed: bg.visualizerSpeed,
       visualizerFps: unfocusedFps(bg.visualizerFps, bg.unfocusedVisualizerMode, focused),
-      visualizerFilter: bg.visualizerFilter,
+      visualizerFilters: bg.visualizerFilters,
+      visualizerCelEdges: bg.visualizerCelEdges,
     };
   }, [bg, focused]);
 
@@ -226,7 +227,8 @@ export default function App() {
         visualizerIntensity={bgProps.visualizerIntensity}
         visualizerSpeed={bgProps.visualizerSpeed}
         visualizerFps={bgProps.visualizerFps}
-        visualizerFilter={bgProps.visualizerFilter}
+        visualizerFilters={bgProps.visualizerFilters}
+        visualizerCelEdges={bgProps.visualizerCelEdges}
         masterLevel={masterLevel}
         spectrum={spectrum}
       />
