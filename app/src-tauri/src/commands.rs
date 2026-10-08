@@ -71,7 +71,12 @@ pub struct AllStripsState {
 #[derive(Debug, Clone, Serialize)]
 pub struct StripLevel {
     pub strip: u32,
+    /// Post-fader peak, for the strip's meter.
     pub level: f32,
+    /// Pre-fader peak: how loud the source itself is, whatever the fader is
+    /// set to. Drives the background visualizers.
+    #[serde(rename = "preLevel")]
+    pub pre_level: f32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -101,9 +106,12 @@ fn read_bus_level(api: &VoicemeeterAPI, edition: VmEdition, bus: u32) -> BusLeve
 
 fn read_strip_level(api: &VoicemeeterAPI, edition: VmEdition, strip: u32) -> StripLevel {
     let (ch_l, ch_r) = edition.strip_level_channels(strip).unwrap_or((0, 1));
+    // Level types: 0 = pre-fader input, 1 = post-fader input.
     let level_l = api.get_level(1, ch_l).unwrap_or(0.0);
     let level_r = api.get_level(1, ch_r).unwrap_or(0.0);
-    StripLevel { strip, level: level_l.max(level_r) }
+    let pre_l = api.get_level(0, ch_l).unwrap_or(0.0);
+    let pre_r = api.get_level(0, ch_r).unwrap_or(0.0);
+    StripLevel { strip, level: level_l.max(level_r), pre_level: pre_l.max(pre_r) }
 }
 
 fn read_strip(api: &VoicemeeterAPI, strip: u32) -> StripState {

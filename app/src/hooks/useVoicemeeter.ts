@@ -16,7 +16,10 @@ interface AllStripsState {
 
 interface StripLevel {
   strip: number;
+  /** Post-fader peak, for the strip's meter. */
   level: number;
+  /** Pre-fader peak, for the background visualizers. */
+  preLevel: number;
 }
 
 interface AllStripLevels {
@@ -71,6 +74,7 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
     return map;
   });
 
+  const [preFaderLevels, setPreFaderLevels] = useState<Map<number, number>>(() => new Map());
   const [levels, setLevels] = useState<Map<number, number>>(() => {
     const map = new Map<number, number>();
     for (const ch of channelConfigs) {
@@ -164,6 +168,7 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
         }
         return next;
       });
+      setPreFaderLevels(new Map(event.payload.levels.map((l) => [l.strip, l.preLevel])));
     });
 
     const unlistenBusLevels = listen<AllBusLevels>("vm:bus-levels", (event) => {
@@ -246,6 +251,7 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
     error,
     channels,
     levels,
+    preFaderLevels,
     busLevels,
     busGains,
     setGain,
