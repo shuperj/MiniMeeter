@@ -8,6 +8,7 @@ import {
   formatKeyLabel,
   type ModName,
 } from "../../lib/hotkey";
+import { hotkeyCapture } from "../../lib/hotkeyCapture";
 import { inputCls, smallText } from "./shared";
 
 interface HotkeyRecorderProps {
@@ -28,6 +29,13 @@ export default function HotkeyRecorder({ value, onChange }: HotkeyRecorderProps)
   const { mods: savedMods, key } = parseHotkey(value);
   const mods = key ? savedMods : pending;
   const bareHotkey = !!key && mods.length === 0;
+
+  // Global shortcuts swallow their keys before this window sees them, so
+  // suspend them all for as long as we're listening.
+  useEffect(() => {
+    if (!recording) return;
+    return hotkeyCapture.begin();
+  }, [recording]);
 
   useEffect(() => {
     if (!recording) return;
