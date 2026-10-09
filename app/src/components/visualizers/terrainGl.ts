@@ -206,10 +206,12 @@ void main() {
   float f = fract(hp / step1);
   float d = min(f, 1.0 - f) * step1;
   float fw = max(fwidth(hp), 1e-4);
-  float line = 1.0 - smoothstep(fw * 0.35, fw * 0.95, d);
+  // Each edge fades over a full pixel: any sharper and the edges step, and
+  // the steps crawl along the lines as the land slides.
+  float line = 1.0 - smoothstep(fw * 0.15, fw * 1.15, d);
   float f5 = fract(hp / (step1 * 5.0));
   float d5 = min(f5, 1.0 - f5) * step1 * 5.0;
-  float heavy = 1.0 - smoothstep(fw * 0.7, fw * 1.6, d5);
+  float heavy = 1.0 - smoothstep(fw * 0.65, fw * 1.65, d5);
   line = max(line * 0.5, heavy * 0.9);
   // Where lines would crowd closer than a few pixels (steep slopes, the far
   // distance) they alias into a shimmer; let them fade out there instead.
@@ -237,7 +239,11 @@ void main() {
     col = mix(col, cel ? uInk : uHighlight * 0.85, foam * 0.7);
   } else {
     // Paper: matte with a fine grain, lines in the highlight colour, peaks tinted by the rim.
-    float grain = cel ? 0.5 : noise(vG * 60.0) * 0.5 + noise(vG * 140.0) * 0.5;
+    // Each octave of grain fades to its mean once its cells shrink to a pixel
+    // or two; finer than that it only sparkles as the land slides.
+    float gfw = max(fwidth(vG.x), fwidth(vG.y));
+    float g60 = 1.0 - smoothstep(0.4, 0.7, 60.0 * gfw), g140 = 1.0 - smoothstep(0.25, 0.5, 140.0 * gfw);
+    float grain = cel ? 0.5 : 0.5 + (noise(vG * 60.0) - 0.5) * 0.5 * g60 + (noise(vG * 140.0) - 0.5) * 0.5 * g140;
     vec3 matte = mix(uShadow * 0.3, albedo, 0.25 + 0.75 * diff) * (0.9 + 0.2 * grain);
     // Cel draws its own lines in ink, on the map's own contours, rather than
     // hunting for edges in the picture afterwards.
