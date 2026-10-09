@@ -25,7 +25,7 @@ function createTerrainScene(ctx: CanvasRenderingContext2D, options: RefObject<Te
       if (gl && w > 0 && h > 0) gl.resize(w, h);
     },
 
-    draw({ w, h, dt, motion, level, reactivity, palette, spectrum }) {
+    draw({ w, h, dt, motion, level, reactivity, palette, spectrum, cel }) {
       const { groups, bass, mid, treble } = bands(spectrum, level, dt);
       if (palette !== paletteSource) {
         paletteSource = palette;
@@ -38,7 +38,7 @@ function createTerrainScene(ctx: CanvasRenderingContext2D, options: RefObject<Te
       ctx.clearRect(0, 0, w, h);
       const { material, pattern } = options.current!;
       if (gl) {
-        gl.render({ state, material, pattern, lights: lights! });
+        gl.render({ state, material, pattern, lights: lights!, cel });
         ctx.drawImage(gl.canvas, 0, 0);
         return;
       }
@@ -77,6 +77,7 @@ export default function TerrainVisualizer({ material, pattern, ...props }: Visua
   const options = useRef<TerrainOptions>({ material, pattern });
   options.current = { material, pattern };
   const createScene = useMemo(() => (ctx: CanvasRenderingContext2D) => createTerrainScene(ctx, options), []);
-  // Full resolution: the mesh and shading run on the GPU (see terrainGl).
-  return <VisualizerCanvas {...props} createScene={createScene} />;
+  // Full resolution: the mesh and shading run on the GPU (see terrainGl),
+  // which also draws the Cel look itself, on the map's own contour lines.
+  return <VisualizerCanvas {...props} createScene={createScene} celShaded />;
 }

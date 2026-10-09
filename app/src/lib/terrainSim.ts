@@ -17,6 +17,11 @@ export const GROUPS = 16;
 export const VISIBLE = 48;
 /** One row of land per this many milliseconds. */
 export const ROW_MS = 80;
+/**
+ * How much of a new row is this moment's music, the rest carried over from
+ * the row before: a sharp kick becomes a hill with a slope, not a wall.
+ */
+export const ROW_BLEND = 0.5;
 
 export interface TerrainState {
   /** The ring of rows as an RGBA image (height in R), ready for the GPU. */
@@ -89,9 +94,13 @@ function writeRow(state: TerrainState, row: number, drive: TerrainDrive): void {
   }
   const at = (i: number) => raw[clamp(i, 0, COLS - 1)];
   const base = row * COLS * 4;
+  // The row before this one (the newest landed), to blend with.
+  const prevBase = state.rows > 0 ? newestRow(state) * COLS * 4 : -1;
   for (let c = 0; c < COLS; c++) {
     // A wide footprint per band across the width, so hills are as wide as they are long.
-    const v = (at(c - 2) + 2 * at(c - 1) + 3 * raw[c] + 2 * at(c + 1) + at(c + 2)) / 9;
+    const now = (at(c - 2) + 2 * at(c - 1) + 3 * raw[c] + 2 * at(c + 1) + at(c + 2)) / 9;
+    const prev = prevBase >= 0 ? state.image[prevBase + c * 4] / 255 : now;
+    const v = prev + (now - prev) * ROW_BLEND;
     const byte = clamp(Math.round(v * 255), 0, 255);
     state.image[base + c * 4] = byte;
     state.image[base + c * 4 + 1] = byte;

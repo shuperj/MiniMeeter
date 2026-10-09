@@ -51,6 +51,24 @@ describe("stepTerrain", () => {
     expect(Math.max(...others)).toBe(0);
   });
 
+  it("blends each row with the one before, so a sudden hit rises over a few rows", () => {
+    const state = createTerrain(seeded(12));
+    const groups = new Float32Array(GROUPS).fill(1);
+    const col = state.order.indexOf(3);
+    const heights: number[] = [];
+    for (let i = 0; i < 60; i++) {
+      stepTerrain(state, 1, drive({ groups }));
+      const row = rowBytes(state.image, newestRow(state));
+      if (heights.length === 0 || heights[heights.length - 1] !== row[col]) heights.push(row[col]);
+    }
+    // Climbs over the first rows (the steady level then wanders a count or
+    // two with the drifting weight field).
+    expect(heights.length).toBeGreaterThanOrEqual(3);
+    expect(heights[1]).toBeGreaterThan(heights[0]);
+    expect(heights[2]).toBeGreaterThan(heights[1]);
+    expect(heights[0]).toBeLessThan(Math.max(...heights) * 0.75);
+  });
+
   it("keeps the live row ahead of the newest, so a landing row changes nothing at the front", () => {
     const state = createTerrain(seeded(7));
     const groups = new Float32Array(GROUPS).map((_, g) => 0.2 + (g % 4) / 5);

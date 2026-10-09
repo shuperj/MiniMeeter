@@ -8,7 +8,7 @@
 import type { TerrainState } from "../../lib/terrainSim";
 import { ROWS, COLS, VISIBLE, newestRow, rowFraction, waterLevel } from "../../lib/terrainSim";
 import type { PaletteLights } from "../../lib/paletteLights";
-import type { TerrainMaterial, TerrainPattern } from "../../types/style";
+import type { CelEdges, TerrainMaterial, TerrainPattern } from "../../types/style";
 import {
   createProgram, uniformLocations, setColor, perspective, lookAt, multiply, fullscreenBuffer, FULLSCREEN_VERTEX,
   ROOM_GLSL, NOISE_GLSL,
@@ -19,6 +19,8 @@ export interface TerrainGlFrame {
   material: TerrainMaterial;
   pattern: TerrainPattern;
   lights: PaletteLights;
+  /** Cel-shade in the shader (flat light bands, ink on the contour lines); null for the plain look. */
+  cel: CelEdges | null;
 }
 
 export interface TerrainGl {
@@ -109,6 +111,8 @@ uniform int uSwatchCount;
 uniform vec3 uEye;
 uniform float uTime, uWater, uBass;
 uniform int uMaterial, uPattern;
+uniform float uCel;      // 1 = cel-shaded
+uniform vec3 uInk;       // cel outline colour
 varying float vH;
 varying vec3 vN;
 varying vec3 vW;
@@ -154,6 +158,9 @@ void main() {
   vec3 L = normalize(vec3(0.7, 0.75, 0.35));
   vec3 H = normalize(L + V);
   float diff = max(dot(n, L), 0.0);
+  bool cel = uCel > 0.5;
+  // Cel: three flat bands of light instead of a smooth slope.
+  if (cel) diff = floor(diff * 3.0 + 0.5) / 3.0;
   float t = clamp(vH / 0.75, 0.0, 1.0);
 
   // Contour lines every 0.05 of height, every fifth one heavier.
@@ -183,17 +190,20 @@ void main() {
     float fres = 0.08 + 0.92 * pow(1.0 - max(dot(wn, V), 0.0), 5.0);
     float depth = clamp((uWater - vH) / 0.12, 0.0, 1.0);
     vec3 deep = mix(uFluid * 0.5, uFluid * 0.12, depth);
+    if (cel) fres = step(0.5, fres) * 0.7;
     col = mix(deep, room(reflect(-V, wn)) * 0.8, fres) + uHighlight * pow(max(dot(wn, H), 0.0), 90.0) * 0.9;
     float foam = (1.0 - smoothstep(0.0, 0.02, uWater - vH)) * (0.6 + 0.4 * noise(vG * 40.0 + uTime));
-    col = mix(col, uHighlight * 0.85, foam * 0.7);
+    col = mix(col, cel ? uInk : uHighlight * 0.85, foam * 0.7);
   } else {
     // Paper: matte with a fine grain, lines in the highlight colour, peaks tinted by the rim.
-    float grain = noise(vG * 60.0) * 0.5 + noise(vG * 140.0) * 0.5;
+    float grain = cel ? 0.5 : noise(vG * 60.0) * 0.5 + noise(vG * 140.0) * 0.5;
     vec3 matte = mix(uShadow * 0.3, albedo, 0.25 + 0.75 * diff) * (0.9 + 0.2 * grain);
-    col = mix(matte, uHighlight, line * 0.85) + uRim * smoothstep(0.5, 0.9, t) * 0.5;
+    // Cel draws its own lines in ink, on the map's own contours, rather than
+    // hunting for edges in the picture afterwards.
+    col = mix(matte, cel ? uInk : uHighlight, line * (cel ? 0.95 : 0.85)) + uRim * smoothstep(0.5, 0.9, t) * 0.5;
     if (uMaterial == 1) {
       float shore = 1.0 - smoothstep(0.0, 0.02, vH - uWater);
-      col = mix(col, uHighlight * 0.8, shore * 0.5);
+      col = mix(col, cel ? uInk : uHighlight * 0.8, shore * 0.5);
     }
   }
   // Haze with distance into the sky's tint, and a soft edge at the sides and the far end.
@@ -270,6 +280,7 @@ export function createTerrainGl(): TerrainGl | null {
   const u = uniformLocations(gl, program, [
     "uViewProj", "uHist", "uNewest", "uFrac", "uAmp", "uRowAbs", "uWater", "uBass", "uEye", "uTime",
     "uMaterial", "uPattern", "uSwatch", "uSwatchCount", "uFluid", "uLight", "uShadow", "uHighlight", "uRim",
+    "uCel", "uInk",
   ] as const);
   gl.uniform1i(u.uHist, 0);
   setColor(gl, u.uEye, EYE as [number, number, number]);
@@ -290,7 +301,7 @@ export function createTerrainGl(): TerrainGl | null {
       gl.useProgram(skyProgram);
       gl.uniform2f(sky.uSize, w, h);
     },
-    render({ state, material, pattern, lights }) {
+    render({ state, material, pattern, lights, cel }) {
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -339,6 +350,9 @@ export function createTerrainGl(): TerrainGl | null {
       setColor(gl, u.uShadow, lights.shadow);
       setColor(gl, u.uHighlight, lights.highlight);
       setColor(gl, u.uRim, lights.rim);
+      gl.uniform1f(u.uCel, cel ? 1 : 0);
+      const ink = cel === "light" ? 1 : 0.03;
+      gl.uniform3f(u.uInk, ink, ink, ink);
       gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
     },
   };
