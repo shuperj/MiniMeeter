@@ -58,10 +58,25 @@ vec2 ground(vec2 q) {
   float back = q.y * VISIBLE - uFrac;
   return vec2((q.x - 0.5) * 2.0 * XW, (uRowAbs - back) * (ZW / VISIBLE));
 }
+// One row's height at u, read exactly at the row's centre (so the hardware
+// filter only blends across, never between rows).
+float rowAt(float u, float row) {
+  return texture2D(uHist, vec2(u, (row + 0.5) / ROWS)).r;
+}
 float height(vec2 q) {
   float back = q.y * VISIBLE - uFrac;
-  float v = (uNewest - back + 0.5) / ROWS;
-  float h = texture2D(uHist, vec2(q.x, v)).r * uAmp;
+  // Catmull-Rom across four rows: the surface and its slope move smoothly
+  // as the land scrolls, where a linear blend kinks at every row centre.
+  float r = uNewest - back;
+  float r0 = floor(r);
+  float t = r - r0;
+  float top = uNewest + 1.0;   // the live row; nothing newer exists yet
+  float hm = rowAt(q.x, r0 - 1.0);
+  float h0 = rowAt(q.x, r0);
+  float h1 = rowAt(q.x, min(r0 + 1.0, top));
+  float h2 = rowAt(q.x, min(r0 + 2.0, top));
+  float h = 0.5 * (2.0 * h0 + (h1 - hm) * t + (2.0 * hm - 5.0 * h0 + 4.0 * h1 - h2) * t * t + (3.0 * h0 - hm - 3.0 * h1 + h2) * t * t * t);
+  h *= uAmp;
   vec2 g = ground(q);
   h += (fbm(g * 0.9) - 0.45) * 0.3;
   h += (noise(g * 5.0) - 0.5) * 0.03;
@@ -151,6 +166,9 @@ void main() {
   float d5 = min(f5, 1.0 - f5) * step1 * 5.0;
   float heavy = 1.0 - smoothstep(fw * 0.7, fw * 1.6, d5);
   line = max(line * 0.5, heavy * 0.9);
+  // Where lines would crowd closer than a few pixels (steep slopes, the far
+  // distance) they alias into a shimmer; let them fade out there instead.
+  line *= 1.0 - smoothstep(0.2, 0.45, fw / step1);
 
   // The ground's own colour: by height, or the camouflage.
   vec3 albedo = mix(uFluid * 0.5, uLight * 0.75, t);
