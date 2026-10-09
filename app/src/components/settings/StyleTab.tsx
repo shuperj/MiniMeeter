@@ -205,7 +205,7 @@ export default function StyleTab({
           <span className={sliderValueCls}>{Math.round((draft.globalOpacity ?? 1) * 100)}%</span>
         </SettingRow>
 
-        <SettingRow label="Titlebar" title="Solid fills the bar with the accent. Mica is Windows' Mica with a light accent wash; Clear shows the desktop behind the window, frosted. While the window is unfocused (or below full opacity) both show as glass over the app instead.">
+        <SettingRow label="Titlebar" title="Solid fills the bar with the accent; Mica is frosted glass tinted with the accent; Clear is frosted glass with no tint.">
           <Segmented
             options={TITLEBAR_STYLES}
             value={draft.titlebarStyle}

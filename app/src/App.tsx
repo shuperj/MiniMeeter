@@ -15,7 +15,6 @@ import Titlebar from "./components/Titlebar";
 import Fader from "./components/Fader";
 import BackgroundLayer from "./components/BackgroundLayer";
 import { visualizerLevel } from "./lib/visualizerLevel";
-import { chooseBackdrop } from "./lib/backdrop";
 import { hexToRgb } from "./lib/color";
 import { useSpectrum } from "./hooks/useSpectrum";
 import { usesSpectrum } from "./lib/visualizerPresets";
@@ -106,38 +105,24 @@ export default function App() {
     };
   }, [bg, focused]);
 
-  // Whole-window opacity. Uses effectiveSettings so dragging the slider in
-  // Settings previews live, unlike the pin which must not follow previews.
-  // Set before the backdrop: full opacity drops the layered style that would
-  // hide the material.
+  // Acrylic + CSS overlay, synced to focus state.
+  // Windows DWM forces acrylic opaque when unfocused, so we clear it and
+  // fall back to a CSS-only translucent overlay that preserves the look.
   useEffect(() => {
     if (!styleLoaded) return;
-    invoke("set_window_opacity", { opacity: effectiveSettings.globalOpacity ?? 1 }).catch(() => {});
-  }, [effectiveSettings.globalOpacity, styleLoaded]);
-
-  // Windows' backdrop material (lib/backdrop): Acrylic for the Acrylic
-  // background, Mica or Acrylic behind a Mica or Clear title bar. Windows draws
-  // them flat while unfocused, so they are cleared then and the CSS glass
-  // stands in. Once Windows refuses one, the CSS glass is used for good.
-  const [backdropSupported, setBackdropSupported] = useState(true);
-  const { backdrop, nativeTitlebar } = chooseBackdrop({
-    backgroundMode: bg.backgroundMode,
-    titlebarStyle: effectiveSettings.titlebarStyle,
-    focused,
-    opacity: effectiveSettings.globalOpacity ?? 1,
-    supported: backdropSupported,
-  });
-  useEffect(() => {
-    if (!styleLoaded) return;
-    invoke("set_backdrop", { kind: backdrop }).catch(() => {
-      if (backdrop !== "none") setBackdropSupported(false);
-    });
-  }, [backdrop, styleLoaded]);
-  useEffect(() => {
-    if (!styleLoaded) return;
-    const acrylicShowing = bgProps.isAcrylic && backdrop === "acrylic";
-    document.documentElement.style.setProperty("--glass-opacity", acrylicShowing ? "0.45" : "0.85");
-  }, [bgProps.isAcrylic, backdrop, styleLoaded]);
+    if (bgProps.isAcrylic) {
+      if (focused) {
+        invoke("set_acrylic", { enabled: true }).catch(() => {});
+        document.documentElement.style.setProperty("--glass-opacity", "0.45");
+      } else {
+        document.documentElement.style.setProperty("--glass-opacity", "0.85");
+        invoke("set_acrylic", { enabled: false }).catch(() => {});
+      }
+    } else {
+      invoke("set_acrylic", { enabled: false }).catch(() => {});
+      document.documentElement.style.setProperty("--glass-opacity", "0.85");
+    }
+  }, [bgProps.isAcrylic, focused, styleLoaded]);
 
   // Keep the OS always-on-top flag in sync with the saved preference. Reads from
   // `style` rather than `effectiveSettings` so live style previews can't unpin the
@@ -150,6 +135,13 @@ export default function App() {
   const togglePinned = () => {
     saveStyle({ ...style, alwaysOnTop: !style.alwaysOnTop });
   };
+
+  // Whole-window opacity. Uses effectiveSettings so dragging the slider in
+  // Settings previews live, unlike the pin which must not follow previews.
+  useEffect(() => {
+    if (!styleLoaded) return;
+    invoke("set_window_opacity", { opacity: effectiveSettings.globalOpacity ?? 1 }).catch(() => {});
+  }, [effectiveSettings.globalOpacity, styleLoaded]);
 
   const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded, needsOutputSetup, setNeedsOutputSetup } = useChannelConfig();
   const {
@@ -224,10 +216,7 @@ export default function App() {
     : undefined;
 
   return (
-    <div
-      className="flex flex-col h-dvh w-dvw overflow-hidden rounded-[6px] relative isolate"
-      data-native-titlebar={nativeTitlebar || undefined}
-    >
+    <div className="flex flex-col h-dvh w-dvw overflow-hidden rounded-[6px] relative isolate">
       {/* Background layer — behind all content */}
       <BackgroundLayer
         showColor={bgProps.showColor}
@@ -267,7 +256,6 @@ export default function App() {
         onPinToggle={togglePinned}
         windowPresets={effectiveSettings.windowPresets ?? []}
         titlebarStyle={effectiveSettings.titlebarStyle}
-        nativeTitlebar={nativeTitlebar}
       />
 
       {/* Channel faders */}

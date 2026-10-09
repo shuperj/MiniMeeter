@@ -21,15 +21,12 @@ interface TitlebarProps {
   /** Sizes offered when right-clicking the minimize button. */
   windowPresets: WindowPreset[];
   titlebarStyle: TitlebarStyle;
-  /** Mica / Clear are on Windows' own material (lib/backdrop), not CSS glass. */
-  nativeTitlebar?: boolean;
 }
 
 /**
- * The bar's surface per style when drawn in CSS: Mica and Clear as frosted
- * glass over the app's own background (backdrop-filter), one tinted with the
- * accent, one neutral. This is also their look while the window is unfocused,
- * when Windows won't draw its materials.
+ * The bar's surface per style. Mica and Clear are frosted glass over the
+ * background (blurred by backdrop-filter), one tinted with the accent, one
+ * neutral; their text stays readable against whatever moves behind.
  */
 const SURFACES: Record<TitlebarStyle, CSSProperties> = {
   solid: { backgroundColor: "var(--accent)", "--titlebar-fg": "var(--accent-fg)" } as CSSProperties,
@@ -51,31 +48,13 @@ const SURFACES: Record<TitlebarStyle, CSSProperties> = {
   } as CSSProperties,
 };
 
-/**
- * Mica and Clear on Windows' own material: the bar leaves its strip see-through
- * (App.css cuts the page out under it) and only adds a light accent wash to
- * Mica and the hairline edge.
- */
-const NATIVE_SURFACES: Partial<Record<TitlebarStyle, CSSProperties>> = {
-  mica: {
-    backgroundColor: "rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.15)",
-    boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.12)",
-    "--titlebar-fg": "#ffffff",
-  } as CSSProperties,
-  clear: {
-    backgroundColor: "transparent",
-    boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.12)",
-    "--titlebar-fg": "#ffffff",
-  } as CSSProperties,
-};
-
 function formatDb(v: number): string {
   const rounded = Math.round(v);
   const sign = rounded >= 0 ? "+" : "-";
   return `${sign}${String(Math.abs(rounded)).padStart(2, "0")}dB`;
 }
 
-export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, onAppsClick, appsOpen, busGain, showOutputLevel, reconnecting, pinned, onPinToggle, windowPresets, titlebarStyle, nativeTitlebar = false }: TitlebarProps) {
+export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, onAppsClick, appsOpen, busGain, showOutputLevel, reconnecting, pinned, onPinToggle, windowPresets, titlebarStyle }: TitlebarProps) {
   const appWindow = getCurrentWindow();
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
@@ -137,8 +116,8 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       // z-[45] keeps the titlebar above the connection overlay (z-40) so the window
       // stays closable/movable while waiting for Voicemeeter. The settings panel
       // (z-50) is still allowed to cover it.
-      className="relative z-[45] flex items-center h-[var(--titlebar-h)] px-[clamp(6px,2vw,12px)] select-none shrink-0"
-      style={(nativeTitlebar && NATIVE_SURFACES[titlebarStyle]) || SURFACES[titlebarStyle]}
+      className="relative z-[45] flex items-center h-[clamp(24px,8dvh,36px)] px-[clamp(6px,2vw,12px)] select-none shrink-0"
+      style={SURFACES[titlebarStyle]}
       data-tauri-drag-region
     >
       {/* Pin / always-on-top */}

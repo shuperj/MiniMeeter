@@ -50,7 +50,7 @@ export default function BackgroundLayer({
   spectrum,
 }: BackgroundLayerProps) {
   return (
-    <div className="background-layer absolute inset-0 -z-10 pointer-events-none overflow-hidden rounded-[6px]">
+    <div className="absolute inset-0 -z-10 pointer-events-none overflow-hidden rounded-[6px]">
       {showColor && (
         <div
           className="absolute inset-0"

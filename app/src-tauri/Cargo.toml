@@ -28,7 +28,6 @@ version = "0.58"
 features = [
   "UI_ViewManagement",
   "Win32_Graphics_Dwm",
-  "Win32_UI_Controls",
   "Win32_Foundation",
   "Win32_UI_WindowsAndMessaging",
   # Core Audio session control for the per-app mixer (app_sessions.rs)
