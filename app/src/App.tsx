@@ -255,7 +255,6 @@ export default function App() {
         pinned={style.alwaysOnTop}
         onPinToggle={togglePinned}
         windowPresets={effectiveSettings.windowPresets ?? []}
-        titlebarStyle={effectiveSettings.titlebarStyle}
       />
 
       {/* Channel faders */}

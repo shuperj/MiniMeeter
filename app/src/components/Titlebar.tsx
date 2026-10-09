@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import type { A1Device } from "../config";
-import type { TitlebarStyle, WindowPreset } from "../types/style";
+import type { WindowPreset } from "../types/style";
 import { invoke } from "@tauri-apps/api/core";
 
 interface TitlebarProps {
@@ -20,33 +20,10 @@ interface TitlebarProps {
   onPinToggle: () => void;
   /** Sizes offered when right-clicking the minimize button. */
   windowPresets: WindowPreset[];
-  titlebarStyle: TitlebarStyle;
 }
 
-/**
- * The bar's surface per style. Mica and Clear are frosted glass over the
- * background (blurred by backdrop-filter), one tinted with the accent, one
- * neutral; their text stays readable against whatever moves behind.
- */
-const SURFACES: Record<TitlebarStyle, CSSProperties> = {
-  solid: { backgroundColor: "var(--accent)", "--titlebar-fg": "var(--accent-fg)" } as CSSProperties,
-  mica: {
-    // The accent as a tint over the blurred, lifted backdrop, with a pale
-    // sheen along the top so it reads as glass even over something dark.
-    backgroundImage: "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0.03))",
-    backgroundColor: "rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.5)",
-    backdropFilter: "blur(18px) saturate(1.5) brightness(1.25)",
-    boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.14)",
-    "--titlebar-fg": "var(--accent-fg)",
-  } as CSSProperties,
-  clear: {
-    backgroundImage: "linear-gradient(rgba(255,255,255,0.16), rgba(255,255,255,0.05))",
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-    backdropFilter: "blur(18px) saturate(1.4) brightness(1.3)",
-    boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.16)",
-    "--titlebar-fg": "#ffffff",
-  } as CSSProperties,
-};
+/** The bar's surface: the accent, with its readable text colour. */
+const SURFACE = { backgroundColor: "var(--accent)", "--titlebar-fg": "var(--accent-fg)" } as CSSProperties;
 
 function formatDb(v: number): string {
   const rounded = Math.round(v);
@@ -54,7 +31,7 @@ function formatDb(v: number): string {
   return `${sign}${String(Math.abs(rounded)).padStart(2, "0")}dB`;
 }
 
-export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, onAppsClick, appsOpen, busGain, showOutputLevel, reconnecting, pinned, onPinToggle, windowPresets, titlebarStyle }: TitlebarProps) {
+export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, onAppsClick, appsOpen, busGain, showOutputLevel, reconnecting, pinned, onPinToggle, windowPresets }: TitlebarProps) {
   const appWindow = getCurrentWindow();
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
@@ -117,7 +94,7 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       // stays closable/movable while waiting for Voicemeeter. The settings panel
       // (z-50) is still allowed to cover it.
       className="relative z-[45] flex items-center h-[clamp(24px,8dvh,36px)] px-[clamp(6px,2vw,12px)] select-none shrink-0"
-      style={SURFACES[titlebarStyle]}
+      style={SURFACE}
       data-tauri-drag-region
     >
       {/* Pin / always-on-top */}

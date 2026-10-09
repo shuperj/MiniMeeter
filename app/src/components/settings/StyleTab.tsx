@@ -5,7 +5,7 @@ import {
   disable as autostartDisable,
   isEnabled as autostartIsEnabled,
 } from "@tauri-apps/plugin-autostart";
-import type { AccentSource, StyleSettings, TitlebarStyle, WindowPreset } from "../../types/style";
+import type { AccentSource, StyleSettings, WindowPreset } from "../../types/style";
 import { DEFAULT_STYLE_SETTINGS } from "../../types/style";
 import WindowStateStyleEditor from "./WindowStateStyleEditor";
 import SettingsGroup, { SettingRow, Segmented } from "./SettingsGroup";
@@ -20,12 +20,6 @@ interface StyleTabProps {
   medText: string;
   inputCls: string;
 }
-
-const TITLEBAR_STYLES: { value: TitlebarStyle; label: string }[] = [
-  { value: "solid", label: "Solid" },
-  { value: "mica", label: "Mica" },
-  { value: "clear", label: "Clear" },
-];
 
 const ACCENT_SOURCES: { value: AccentSource; label: string }[] = [
   { value: "system", label: "System" },
@@ -205,12 +199,7 @@ export default function StyleTab({
           <span className={sliderValueCls}>{Math.round((draft.globalOpacity ?? 1) * 100)}%</span>
         </SettingRow>
 
-        <SettingRow label="Titlebar" title="Solid fills the bar with the accent; Mica is frosted glass tinted with the accent; Clear is frosted glass with no tint.">
-          <Segmented
-            options={TITLEBAR_STYLES}
-            value={draft.titlebarStyle}
-            onChange={(titlebarStyle) => update({ titlebarStyle })}
-          />
+        <SettingRow label="Titlebar">
           <label className={checkboxLabelCls}>
             <input
               type="checkbox"

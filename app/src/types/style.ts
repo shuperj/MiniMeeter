@@ -1,11 +1,5 @@
 export type AccentSource = "system" | "custom";
 
-/**
- * The title bar's surface: solid accent, frosted glass tinted with the
- * accent (Mica), or frosted glass with no tint.
- */
-export type TitlebarStyle = "solid" | "mica" | "clear";
-
 /** A named window size the user can snap to from the titlebar. */
 export interface WindowPreset {
   name: string;
@@ -99,7 +93,6 @@ export interface PresetStyleFields {
 export interface StyleSettings {
   accentSource: AccentSource;
   customAccentColor: string;
-  titlebarStyle: TitlebarStyle;
   faderColumnWidth: number;
   /**
    * Frosted-glass panel behind each fader, 0 - 1: 0 is fully clear, higher
@@ -148,7 +141,6 @@ export const DEFAULT_BACKGROUND_STYLE: BackgroundStyle = {
 export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   accentSource: "system",
   customAccentColor: "#3a86ff",
-  titlebarStyle: "solid",
   faderColumnWidth: 0,
   faderGlass: 1,
   background: { ...DEFAULT_BACKGROUND_STYLE },
