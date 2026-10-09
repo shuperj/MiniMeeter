@@ -421,19 +421,43 @@ pub fn get_accent_color() -> AccentColor {
     get_system_accent_color()
 }
 
+/// Put one of Windows' backdrop materials behind the whole window: "acrylic"
+/// (what is behind the window, frosted), "mica" (tinted by the wallpaper) or
+/// "none". It shows only where the page leaves pixels transparent. Errors when
+/// this Windows can't draw the material (no Mica before Windows 11), so the UI
+/// can fall back to its CSS glass.
+///
+/// Two things this frameless window needs for the material to draw at all: the
+/// frame extended over the whole client area, and no layered style (see
+/// `set_window_opacity`). "mica" is Windows' Mica Alt: plain Mica
+/// (DWMSBT_MAINWINDOW) does not draw in this window, the tabbed variant does.
 #[tauri::command]
-pub fn set_acrylic(window_state: State<WindowState>, enabled: bool) -> Result<(), String> {
+pub fn set_backdrop(window_state: State<WindowState>, kind: String) -> Result<(), String> {
     let guard = window_state.window.lock().map_err(|e| e.to_string())?;
     let window = guard.as_ref().ok_or("No window")?;
 
     #[cfg(target_os = "windows")]
     {
-        use window_vibrancy::{apply_acrylic, clear_acrylic};
+        use window_vibrancy::{apply_acrylic, apply_tabbed, clear_acrylic, clear_tabbed};
+        use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
+        use windows::Win32::UI::Controls::MARGINS;
+
         let _ = clear_acrylic(window);
-        if enabled {
-            apply_acrylic(window, Some((10, 10, 10, 255))).map_err(|e| e.to_string())?;
+        let _ = clear_tabbed(window);
+        let raw = window.hwnd().map_err(|e| e.to_string())?;
+        let hwnd = windows::Win32::Foundation::HWND(raw.0 as _);
+        let m = if kind == "none" { 0 } else { -1 };
+        let margins = MARGINS { cxLeftWidth: m, cxRightWidth: m, cyTopHeight: m, cyBottomHeight: m };
+        unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins).map_err(|e| e.to_string())? };
+        match kind.as_str() {
+            "acrylic" => apply_acrylic(window, Some((10, 10, 10, 255))).map_err(|e| e.to_string())?,
+            "mica" => apply_tabbed(window, Some(true)).map_err(|e| e.to_string())?,
+            "none" => {}
+            other => return Err(format!("unknown backdrop {other}")),
         }
     }
+    #[cfg(not(target_os = "windows"))]
+    let _ = kind;
     Ok(())
 }
 
@@ -464,11 +488,20 @@ pub fn set_window_opacity(window_state: State<WindowState>, opacity: f64) -> Res
 
         unsafe {
             let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-            if ex_style & (WS_EX_LAYERED.0 as isize) == 0 {
-                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style | WS_EX_LAYERED.0 as isize);
+            let layered = WS_EX_LAYERED.0 as isize;
+            if alpha == 255 {
+                // Fully opaque needs no layering, and a layered window gets no
+                // backdrop material (set_backdrop).
+                if ex_style & layered != 0 {
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style & !layered);
+                }
+            } else {
+                if ex_style & layered == 0 {
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style | layered);
+                }
+                SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA)
+                    .map_err(|e| e.to_string())?;
             }
-            SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA)
-                .map_err(|e| e.to_string())?;
         }
     }
 

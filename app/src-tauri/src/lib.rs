@@ -56,16 +56,10 @@ pub fn run() {
                 .get_webview_window("main")
                 .expect("Failed to get main window");
 
-            // Store window handle for runtime acrylic toggling
+            // Store the window handle for the backdrop and opacity commands; the
+            // UI sets the backdrop once its style settings have loaded.
             let ws: tauri::State<WindowState> = app.state();
             *ws.window.lock().unwrap() = Some(window.clone());
-
-            // Apply acrylic glass effect by default
-            #[cfg(target_os = "windows")]
-            {
-                use window_vibrancy::apply_acrylic;
-                let _ = apply_acrylic(&window, Some((10, 10, 10, 255)));
-            }
 
             Ok(())
         })
@@ -83,7 +77,7 @@ pub fn run() {
             commands::vm_get_edition,
             commands::vm_list_output_devices,
             commands::get_accent_color,
-            commands::set_acrylic,
+            commands::set_backdrop,
             commands::set_window_opacity,
             hotkeys::vm_sync_shortcuts,
             fx::vm_sync_fx_groups,

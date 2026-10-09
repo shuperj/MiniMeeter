@@ -10,6 +10,8 @@
   --accent-glow-g: 134;
   --accent-glow-b: 255;
   --glass-opacity: 0.15;
+  /* Title bar height, shared with the native-glass cut-out below. */
+  --titlebar-h: clamp(24px, 8dvh, 36px);
 }
 
 html,
@@ -32,6 +34,21 @@ body {
 #root > div {
   background: rgba(30, 30, 30, var(--glass-opacity));
   transition: background 0.3s ease;
+}
+
+/* A Mica or Clear title bar on Windows' own material: nothing of the page is
+   painted under the bar, so the material shows through its strip. */
+#root > div[data-native-titlebar] {
+  background: linear-gradient(
+    to bottom,
+    transparent var(--titlebar-h),
+    rgba(30, 30, 30, var(--glass-opacity)) var(--titlebar-h)
+  );
+}
+#root > div[data-native-titlebar] > .background-layer {
+  top: var(--titlebar-h);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }
 
 /* Breathing glow on the FX bar while any FX group is active. Kept in CSS so the
