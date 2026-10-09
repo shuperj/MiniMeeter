@@ -79,7 +79,8 @@ export function createTerrain(random: () => number = Math.random): TerrainState 
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
-function pushRow(state: TerrainState, drive: TerrainDrive): void {
+/** Write the land this moment's music makes into row `row` of the ring. */
+function writeRow(state: TerrainState, row: number, drive: TerrainDrive): void {
   const raw = new Float32Array(COLS);
   for (let c = 0; c < COLS; c++) {
     // A drifting field of weights decides where this moment's energy lands.
@@ -87,7 +88,7 @@ function pushRow(state: TerrainState, drive: TerrainDrive): void {
     raw[c] = Math.pow(drive.groups[state.order[c]] ?? 0, 1.2) * state.gain[c] * w;
   }
   const at = (i: number) => raw[clamp(i, 0, COLS - 1)];
-  const base = state.head * COLS * 4;
+  const base = row * COLS * 4;
   for (let c = 0; c < COLS; c++) {
     // A wide footprint per band across the width, so hills are as wide as they are long.
     const v = (at(c - 2) + 2 * at(c - 1) + 3 * raw[c] + 2 * at(c + 1) + at(c + 2)) / 9;
@@ -97,12 +98,21 @@ function pushRow(state: TerrainState, drive: TerrainDrive): void {
     state.image[base + c * 4 + 2] = byte;
     state.image[base + c * 4 + 3] = 255;
   }
-  state.dirty.push(state.head);
+  if (!state.dirty.includes(row)) state.dirty.push(row);
+}
+
+function pushRow(state: TerrainState, drive: TerrainDrive): void {
+  writeRow(state, state.head, drive);
   state.head = (state.head + 1) % ROWS;
   state.rows++;
 }
 
-/** Advance by `dt` 60 Hz frames, laying down rows as time accrues. */
+/**
+ * Advance by `dt` 60 Hz frames, laying down rows as time accrues. The slot
+ * ahead of the newest row always holds this moment's live values, so the
+ * front edge of the land flows toward the row about to land instead of
+ * stepping when it does.
+ */
 export function stepTerrain(state: TerrainState, dt: number, drive: TerrainDrive): void {
   const R = drive.reactivity;
   state.time += dt / 60;
@@ -114,6 +124,7 @@ export function stepTerrain(state: TerrainState, dt: number, drive: TerrainDrive
     pushRow(state, drive);
     state.acc -= ROW_MS;
   }
+  writeRow(state, state.head, drive);
 }
 
 /** Index of the newest row in the ring. */

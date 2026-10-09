@@ -5,7 +5,7 @@
 // while Waves keeps the accent colour and nothing else.
 
 import type { BackgroundStyle, CelEdges, TerrainMaterial, TerrainPattern, VisualizerColorSource, VisualizerPreset } from "../types/style";
-import { DEFAULT_VISUALIZER_PALETTE } from "../types/style";
+import { DEFAULT_BACKGROUND_STYLE, DEFAULT_VISUALIZER_PALETTE } from "../types/style";
 import { normalizePalette } from "./color";
 import { normalizeFilters } from "./visualizerFilter";
 import { PRESET_LABELS } from "./visualizerPresets";
@@ -49,12 +49,13 @@ export function rememberPreset(bg: BackgroundStyle): BackgroundStyle {
 
 /**
  * Switch to `next`: remember the current preset's settings, then take up
- * the next one's if it has any, else carry on with what is set.
+ * the next one's, or the defaults if it has never been set up, so every
+ * preset is its own from the first visit.
  */
 export function switchPreset(bg: BackgroundStyle, next: VisualizerPreset): BackgroundStyle {
   const remembered = rememberPreset(bg);
-  const saved = remembered.presetStyles[next];
-  return { ...remembered, visualizerPreset: next, ...(saved ? presetStyleOf({ ...remembered, ...saved }) : {}) };
+  const saved = remembered.presetStyles[next] ?? {};
+  return { ...remembered, visualizerPreset: next, ...presetStyleOf({ ...DEFAULT_BACKGROUND_STYLE, ...saved }) };
 }
 
 const COLOR_SOURCES: readonly VisualizerColorSource[] = ["accent", "custom", "palette"];

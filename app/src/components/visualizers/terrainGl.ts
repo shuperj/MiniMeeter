@@ -10,7 +10,8 @@ import { ROWS, COLS, VISIBLE, newestRow, rowFraction, waterLevel } from "../../l
 import type { PaletteLights } from "../../lib/paletteLights";
 import type { TerrainMaterial, TerrainPattern } from "../../types/style";
 import {
-  createProgram, uniformLocations, setColor, perspective, lookAt, multiply, ROOM_GLSL, NOISE_GLSL,
+  createProgram, uniformLocations, setColor, perspective, lookAt, multiply, fullscreenBuffer, FULLSCREEN_VERTEX,
+  ROOM_GLSL, NOISE_GLSL,
 } from "./glUtil";
 
 export interface TerrainGlFrame {
@@ -50,13 +51,15 @@ varying float vWet;
 const float ROWS = ${ROWS}.0, VISIBLE = ${VISIBLE}.0, XW = ${XW}, ZW = ${ZW};
 ${NOISE_GLSL}
 // Ground coordinates of a grid point: across in world units, and the row's
-// distance in the same units, so patterns and hills move with the land.
+// distance in the same units, so patterns and hills move with the land. At
+// the very front the distance back dips below zero: that reads the live row
+// ahead of the newest (lib/terrainSim), so the front edge never steps.
 vec2 ground(vec2 q) {
-  float back = max(q.y * VISIBLE - uFrac, 0.0);
+  float back = q.y * VISIBLE - uFrac;
   return vec2((q.x - 0.5) * 2.0 * XW, (uRowAbs - back) * (ZW / VISIBLE));
 }
 float height(vec2 q) {
-  float back = max(q.y * VISIBLE - uFrac, 0.0);
+  float back = q.y * VISIBLE - uFrac;
   float v = (uNewest - back + 0.5) / ROWS;
   float h = texture2D(uHist, vec2(q.x, v)).r * uAmp;
   vec2 g = ground(q);
@@ -175,12 +178,27 @@ void main() {
       col = mix(col, uHighlight * 0.8, shore * 0.5);
     }
   }
-  // Haze with distance, and a soft edge at the sides and the far end.
+  // Haze with distance into the sky's tint, and a soft edge at the sides and the far end.
   float fog = smoothstep(-0.8, -2.9, vW.z);
   float edge = (1.0 - smoothstep(1.5, 1.9, abs(vW.x))) * (1.0 - smoothstep(-2.4, -2.9, vW.z));
-  col = mix(col, vec3(0.0), fog * 0.7);
+  col = mix(col, uShadow * 0.3, fog * 0.7);
   float a = edge * (1.0 - fog * 0.6);
   gl_FragColor = vec4(col * a, a);
+}`;
+
+// The sky: a faint tint behind the land, deeper toward the horizon, so the
+// window has something above the hills (and the title bar's glass something
+// to blur).
+const SKY_FRAGMENT = `
+precision mediump float;
+uniform vec2 uSize;
+uniform vec3 uShadow, uLight;
+void main() {
+  float y = gl_FragCoord.y / uSize.y;          // 0 bottom .. 1 top
+  float horizon = smoothstep(0.95, 0.45, y);   // strongest low, fading up
+  vec3 c = mix(uShadow * 0.35, uLight * 0.12, 1.0 - horizon);
+  float a = 0.25 + 0.4 * horizon;
+  gl_FragColor = vec4(c * a, a);
 }`;
 
 /** A WebGL terrain renderer, or null if WebGL isn't available. */
@@ -191,7 +209,11 @@ export function createTerrainGl(): TerrainGl | null {
   // Contour lines need screen-space derivatives; without them, no lines (and no renderer).
   if (!gl.getExtension("OES_standard_derivatives")) return null;
   const program = createProgram(gl, VERTEX, FRAGMENT, "Terrain");
-  if (!program) return null;
+  const skyProgram = createProgram(gl, FULLSCREEN_VERTEX, SKY_FRAGMENT, "Terrain sky");
+  if (!program || !skyProgram) return null;
+  const skyBuffer = fullscreenBuffer(gl);
+  const aSky = gl.getAttribLocation(skyProgram, "aPos");
+  const sky = uniformLocations(gl, skyProgram, ["uSize", "uShadow", "uLight"] as const);
   gl.useProgram(program);
 
   const n = GRID;
@@ -211,14 +233,12 @@ export function createTerrainGl(): TerrainGl | null {
       indices[k++] = b; indices[k++] = c; indices[k++] = d;
     }
   }
-  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  const gridBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
   const aPos = gl.getAttribLocation(program, "aPos");
-  gl.enableVertexAttribArray(aPos);
-  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
-  gl.enable(gl.DEPTH_TEST);
 
   // The row history (RGBA so every driver takes it; height is in R).
   const texture = gl.createTexture();
@@ -247,9 +267,31 @@ export function createTerrainGl(): TerrainGl | null {
       // Widen the view for tall windows so the land still fills them.
       const aspect = w / h;
       const viewProj = multiply(perspective(FOV * Math.max(1, 1.15 / aspect), aspect, 0.1, 30), lookAt(EYE, TARGET, [0, 1, 0]));
+      gl.useProgram(program);
       gl.uniformMatrix4fv(u.uViewProj, false, viewProj);
+      gl.useProgram(skyProgram);
+      gl.uniform2f(sky.uSize, w, h);
     },
     render({ state, material, pattern, lights }) {
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+      // The sky first, without depth, then the land over it.
+      gl.disable(gl.DEPTH_TEST);
+      gl.useProgram(skyProgram);
+      gl.bindBuffer(gl.ARRAY_BUFFER, skyBuffer);
+      gl.enableVertexAttribArray(aSky);
+      gl.vertexAttribPointer(aSky, 2, gl.FLOAT, false, 0, 0);
+      setColor(gl, sky.uShadow, lights.shadow);
+      setColor(gl, sky.uLight, lights.light);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.disableVertexAttribArray(aSky);
+
+      gl.enable(gl.DEPTH_TEST);
+      gl.useProgram(program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, gridBuffer);
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
       // Upload the rows written since last time (all of them after a new state).
       if (uploadedImage !== state.image) {
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, COLS, ROWS, gl.RGBA, gl.UNSIGNED_BYTE, state.image);
@@ -279,8 +321,6 @@ export function createTerrainGl(): TerrainGl | null {
       setColor(gl, u.uShadow, lights.shadow);
       setColor(gl, u.uHighlight, lights.highlight);
       setColor(gl, u.uRim, lights.rim);
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
     },
   };

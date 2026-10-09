@@ -31,15 +31,19 @@ interface TitlebarProps {
 const SURFACES: Record<TitlebarStyle, CSSProperties> = {
   solid: { backgroundColor: "var(--accent)", "--titlebar-fg": "var(--accent-fg)" } as CSSProperties,
   mica: {
-    backgroundColor: "rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45)",
-    backdropFilter: "blur(18px) saturate(1.4)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.25)",
+    // The accent as a tint over the blurred, lifted backdrop, with a pale
+    // sheen along the top so it reads as glass even over something dark.
+    backgroundImage: "linear-gradient(rgba(255,255,255,0.14), rgba(255,255,255,0.03))",
+    backgroundColor: "rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.5)",
+    backdropFilter: "blur(18px) saturate(1.5) brightness(1.25)",
+    boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.14)",
     "--titlebar-fg": "var(--accent-fg)",
   } as CSSProperties,
   clear: {
-    backgroundColor: "rgba(30, 30, 30, 0.4)",
-    backdropFilter: "blur(18px) saturate(1.3)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25)",
+    backgroundImage: "linear-gradient(rgba(255,255,255,0.16), rgba(255,255,255,0.05))",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    backdropFilter: "blur(18px) saturate(1.4) brightness(1.3)",
+    boxShadow: "inset 0 -1px 0 rgba(255,255,255,0.16)",
     "--titlebar-fg": "#ffffff",
   } as CSSProperties,
 };

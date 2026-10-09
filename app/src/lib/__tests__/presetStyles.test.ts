@@ -17,14 +17,16 @@ const base: BackgroundStyle = {
 };
 
 describe("switchPreset", () => {
-  it("remembers the outgoing preset's settings and keeps them as the start for a new one", () => {
+  it("remembers the outgoing preset's settings and starts a new one from the defaults", () => {
     const next = switchPreset(base, "ferrofluid");
     expect(next.visualizerPreset).toBe("ferrofluid");
     expect(next.presetStyles["lava-lamp"]).toEqual(presetStyleOf(base));
-    // Never seen before: carries on with what was set.
-    expect(next.visualizerOpacity).toBe(0.7);
-    expect(next.visualizerFilters).toEqual(["crt"]);
-    expect(next.visualizerPalette).toEqual(["#111111", "#222222"]);
+    // Never set up before: its own look, not the last preset's.
+    expect(next.visualizerOpacity).toBe(DEFAULT_BACKGROUND_STYLE.visualizerOpacity);
+    expect(next.visualizerFilters).toEqual([]);
+    expect(next.visualizerColorSource).toBe("accent");
+    expect(next.visualizerPalette).toEqual(DEFAULT_BACKGROUND_STYLE.visualizerPalette);
+    expect(next.terrainMaterial).toBe("paper");
   });
 
   it("restores a preset's own settings when switching back to it", () => {

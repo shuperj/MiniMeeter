@@ -30,7 +30,8 @@ describe("stepTerrain", () => {
     for (let i = 0; i < 60; i++) stepTerrain(state, 1, drive());
     expect(state.rows).toBeGreaterThanOrEqual(Math.floor(1000 / ROW_MS));
     expect(state.rows).toBeLessThanOrEqual(Math.ceil(1000 / ROW_MS));
-    expect(state.dirty).toHaveLength(state.rows);
+    // Every landed row plus the live one ahead of it.
+    expect(state.dirty).toHaveLength(state.rows + 1);
     expect(newestRow(state)).toBe(state.rows - 1);
     expect(rowFraction(state)).toBeGreaterThanOrEqual(0);
     expect(rowFraction(state)).toBeLessThan(1);
@@ -48,6 +49,21 @@ describe("stepTerrain", () => {
     const others = row.filter((_, c) => !loudCols.some((l) => Math.abs(l - c) <= 2));
     expect(loudest).toBeGreaterThan(Math.max(...others));
     expect(Math.max(...others)).toBe(0);
+  });
+
+  it("keeps the live row ahead of the newest, so a landing row changes nothing at the front", () => {
+    const state = createTerrain(seeded(7));
+    const groups = new Float32Array(GROUPS).map((_, g) => 0.2 + (g % 4) / 5);
+    const d = drive({ groups });
+    stepTerrain(state, 1, d);
+    const live = rowBytes(state.image, state.head);
+    expect(Math.max(...live)).toBeGreaterThan(0);
+    // Step until a row lands: the new newest row is exactly what the live row
+    // showed, and a fresh live row waits ahead of it.
+    const before = state.rows;
+    while (state.rows === before) stepTerrain(state, 1, d);
+    expect(rowBytes(state.image, newestRow(state))).toEqual(live);
+    expect(Math.max(...rowBytes(state.image, state.head))).toBeGreaterThan(0);
   });
 
   it("wraps the ring and keeps the newest row index right", () => {
