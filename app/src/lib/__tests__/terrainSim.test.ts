@@ -53,6 +53,8 @@ describe("stepTerrain", () => {
 
   it("blends each row with the one before, so a sudden hit rises over a few rows", () => {
     const state = createTerrain(seeded(12));
+    // Silence first, so there is a flat row to blend the hit with.
+    for (let i = 0; i < 30; i++) stepTerrain(state, 1, drive());
     const groups = new Float32Array(GROUPS).fill(1);
     const col = state.order.indexOf(3);
     const heights: number[] = [];
