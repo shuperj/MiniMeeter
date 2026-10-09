@@ -57,15 +57,17 @@ describe("normalizePresetStyles", () => {
   it("keeps valid entries for known presets and drops the rest", () => {
     const out = normalizePresetStyles({
       "lava-lamp": { visualizerOpacity: 0.5, visualizerFilters: ["crt", "bogus"], visualizerCelEdges: "nope", visualizerPalette: ["#123456", "#abcdef"], extra: 1 },
+      terrain: { terrainMaterial: "flooded", terrainPattern: "zebra" },
       aurora: { visualizerOpacity: 0.5 },
       pipes: "junk",
     });
-    expect(Object.keys(out)).toEqual(["lava-lamp"]);
+    expect(Object.keys(out)).toEqual(["lava-lamp", "terrain"]);
     expect(out["lava-lamp"]).toEqual({
       visualizerOpacity: 0.5,
       visualizerFilters: ["crt"],
       visualizerPalette: ["#123456", "#abcdef"],
     });
+    expect(out.terrain).toEqual({ terrainMaterial: "flooded" });
   });
 
   it("is empty for anything that isn't an object", () => {

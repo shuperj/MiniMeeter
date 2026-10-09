@@ -100,6 +100,8 @@ export default function App() {
       visualizerFps: unfocusedFps(bg.visualizerFps, bg.unfocusedVisualizerMode, focused),
       visualizerFilters: bg.visualizerFilters,
       visualizerCelEdges: bg.visualizerCelEdges,
+      terrainMaterial: bg.terrainMaterial,
+      terrainPattern: bg.terrainPattern,
     };
   }, [bg, focused]);
 
@@ -229,6 +231,8 @@ export default function App() {
         visualizerFps={bgProps.visualizerFps}
         visualizerFilters={bgProps.visualizerFilters}
         visualizerCelEdges={bgProps.visualizerCelEdges}
+        terrainMaterial={bgProps.terrainMaterial}
+        terrainPattern={bgProps.terrainPattern}
         masterLevel={masterLevel}
         spectrum={spectrum}
       />

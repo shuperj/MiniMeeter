@@ -8,6 +8,8 @@ export const PRESET_LABELS: Record<VisualizerPreset, string> = {
   "noise-flow": "Noise Flow",
   "lava-lamp": "Lava Lamp",
   ferrofluid: "Ferrofluid",
+  "liquid-metal": "Liquid Metal",
+  terrain: "Terrain",
   "disco-ball": "Disco Ball",
   pipes: "Pipes",
 };
@@ -15,7 +17,7 @@ export const PRESET_LABELS: Record<VisualizerPreset, string> = {
 /** The preset menu: flat drawings first, then the shaded, three-dimensional ones. */
 export const PRESET_GROUPS: readonly { label: string; presets: readonly VisualizerPreset[] }[] = [
   { label: "2D", presets: ["xmb-smoke", "starfield", "matrix-rain", "noise-flow"] },
-  { label: "3D", presets: ["lava-lamp", "ferrofluid", "disco-ball", "pipes"] },
+  { label: "3D", presets: ["lava-lamp", "ferrofluid", "liquid-metal", "terrain", "disco-ball", "pipes"] },
 ];
 
 /**
@@ -29,6 +31,8 @@ const SPECTRUM_PRESETS: ReadonlySet<VisualizerPreset> = new Set<VisualizerPreset
   "noise-flow",
   "lava-lamp",
   "ferrofluid",
+  "liquid-metal",
+  "terrain",
   "disco-ball",
   "pipes",
 ]);

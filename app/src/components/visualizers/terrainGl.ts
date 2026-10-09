@@ -1,0 +1,287 @@
+// GPU renderer for the Terrain visualizer. A grid mesh is shaped in the
+// vertex shader from the row history (lib/terrainSim) held in a texture,
+// plus random rolling hills that scroll with it. The fragment shader draws
+// it as a contour map in one of two materials, Paper (matte, grained) or
+// Flooded (mirror water drowning the valleys), optionally in a splinter
+// camouflage painted with the palette's own colours.
+
+import type { TerrainState } from "../../lib/terrainSim";
+import { ROWS, COLS, VISIBLE, newestRow, rowFraction, waterLevel } from "../../lib/terrainSim";
+import type { PaletteLights } from "../../lib/paletteLights";
+import type { TerrainMaterial, TerrainPattern } from "../../types/style";
+import {
+  createProgram, uniformLocations, setColor, perspective, lookAt, multiply, ROOM_GLSL, NOISE_GLSL,
+} from "./glUtil";
+
+export interface TerrainGlFrame {
+  state: TerrainState;
+  material: TerrainMaterial;
+  pattern: TerrainPattern;
+  lights: PaletteLights;
+}
+
+export interface TerrainGl {
+  canvas: HTMLCanvasElement;
+  resize(w: number, h: number): void;
+  render(frame: TerrainGlFrame): void;
+}
+
+/** Vertices along each edge of the ground mesh. */
+const GRID = 150;
+/** Half the width of the land, and its depth, in world units. */
+const XW = 1.9;
+const ZW = 4.2;
+const EYE = [0, 1.45, 1.55];
+const TARGET = [0, 0.1, -1.05];
+const FOV = (50 * Math.PI) / 180;
+
+const VERTEX = `
+precision highp float;
+precision highp int;
+attribute vec2 aPos;            // x -1..1 across, y 0..1 near to far
+uniform mat4 uViewProj;
+uniform sampler2D uHist;
+uniform float uNewest, uFrac, uAmp, uRowAbs, uWater;
+varying float vH;
+varying vec3 vN;
+varying vec3 vW;
+varying vec2 vG;
+varying float vWet;
+const float ROWS = ${ROWS}.0, VISIBLE = ${VISIBLE}.0, XW = ${XW}, ZW = ${ZW};
+${NOISE_GLSL}
+// Ground coordinates of a grid point: across in world units, and the row's
+// distance in the same units, so patterns and hills move with the land.
+vec2 ground(vec2 q) {
+  float back = max(q.y * VISIBLE - uFrac, 0.0);
+  return vec2((q.x - 0.5) * 2.0 * XW, (uRowAbs - back) * (ZW / VISIBLE));
+}
+float height(vec2 q) {
+  float back = max(q.y * VISIBLE - uFrac, 0.0);
+  float v = (uNewest - back + 0.5) / ROWS;
+  float h = texture2D(uHist, vec2(q.x, v)).r * uAmp;
+  vec2 g = ground(q);
+  h += (fbm(g * 0.9) - 0.45) * 0.3;
+  h += (noise(g * 5.0) - 0.5) * 0.03;
+  return h;
+}
+void main() {
+  vec2 q = vec2(aPos.x * 0.5 + 0.5, aPos.y);
+  float h = height(q);
+  float e = 1.0 / ${GRID}.0;
+  float hx1 = height(q + vec2(e, 0.0)), hx0 = height(q - vec2(e, 0.0));
+  float hz1 = height(q + vec2(0.0, e)), hz0 = height(q - vec2(0.0, e));
+  vec3 dx = vec3(2.0 * e * XW, hx1 - hx0, 0.0);
+  vec3 dz = vec3(0.0, hz1 - hz0, -2.0 * e * ZW);
+  vN = normalize(cross(dx, dz));
+  vH = h;
+  // Flooded: anything under the water level is lifted to the water surface.
+  vWet = h < uWater ? 1.0 : 0.0;
+  vW = vec3(aPos.x * XW, max(h, uWater), -aPos.y * ZW + 1.3);
+  vG = ground(q);
+  gl_Position = uViewProj * vec4(vW, 1.0);
+}`;
+
+const FRAGMENT = `
+#extension GL_OES_standard_derivatives : enable
+precision highp float;
+precision highp int;
+uniform vec3 uFluid, uLight, uShadow, uHighlight, uRim;
+uniform vec3 uSwatch[5];
+uniform int uSwatchCount;
+uniform vec3 uEye;
+uniform float uTime, uWater, uBass;
+uniform int uMaterial, uPattern;
+varying float vH;
+varying vec3 vN;
+varying vec3 vW;
+varying vec2 vG;
+varying float vWet;
+${NOISE_GLSL}
+${ROOM_GLSL}
+vec3 swatch(float t) {   // 0..1 -> one of the palette's colours
+  int i = int(floor(clamp(t, 0.0, 0.999) * float(uSwatchCount)));
+  for (int k = 0; k < 5; k++) if (k == i) return uSwatch[k];
+  return uSwatch[0];
+}
+// Splinter camouflage: angular Voronoi fragments, with smaller fragments
+// cut into some of them; which colour, as 0..1 over the swatches.
+float camo(vec2 g) {
+  vec2 p = g * 1.3;
+  vec2 ip = floor(p), fp = fract(p);
+  float best = 8.0;
+  vec2 bestCell = vec2(0.0);
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 o = vec2(float(x), float(y));
+    vec2 r = o + hash2(ip + o) - fp;
+    float d = abs(r.x) * 0.9 + abs(r.y) * 1.1 + max(abs(r.x), abs(r.y)) * 0.3;
+    if (d < best) { best = d; bestCell = ip + o; }
+  }
+  float t = hash(bestCell * 1.7);
+  vec2 p2 = g * 3.4;
+  vec2 ip2 = floor(p2), fp2 = fract(p2);
+  float best2 = 8.0;
+  vec2 cell2 = vec2(0.0);
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 o = vec2(float(x), float(y));
+    vec2 r = o + hash2(ip2 + o + 3.1) - fp2;
+    float d = abs(r.x) + abs(r.y) * 1.2;
+    if (d < best2) { best2 = d; cell2 = ip2 + o; }
+  }
+  if (hash(cell2 * 0.37 + 9.2) > 0.68) t = hash(cell2 * 2.3);
+  return t;
+}
+void main() {
+  vec3 n = normalize(vN);
+  vec3 V = normalize(uEye - vW);
+  vec3 L = normalize(vec3(0.7, 0.75, 0.35));
+  vec3 H = normalize(L + V);
+  float diff = max(dot(n, L), 0.0);
+  float t = clamp(vH / 0.75, 0.0, 1.0);
+
+  // Contour lines every 0.05 of height, every fifth one heavier.
+  float step1 = 0.05;
+  float f = fract(vH / step1);
+  float d = min(f, 1.0 - f) * step1;
+  float fw = max(fwidth(vH), 1e-4);
+  float line = 1.0 - smoothstep(fw * 0.35, fw * 0.95, d);
+  float f5 = fract(vH / (step1 * 5.0));
+  float d5 = min(f5, 1.0 - f5) * step1 * 5.0;
+  float heavy = 1.0 - smoothstep(fw * 0.7, fw * 1.6, d5);
+  line = max(line * 0.5, heavy * 0.9);
+
+  // The ground's own colour: by height, or the camouflage.
+  vec3 albedo = mix(uFluid * 0.5, uLight * 0.75, t);
+  if (uPattern == 1) albedo = swatch(camo(vG)) * 0.8;
+  vec3 col;
+  if (uMaterial == 1 && vWet > 0.5) {
+    // Water: the fluid colour, lighter in the shallows, the room reflected
+    // in a surface that ripples with the bass, foam along the shore.
+    vec2 rp = vG * 9.0 + uTime * vec2(0.6, 0.4);
+    float amp = 0.08 + 0.3 * uBass;
+    vec3 wn = normalize(vec3((noise(rp) - 0.5) * amp, 1.0, (noise(rp + 3.7) - 0.5) * amp));
+    float fres = 0.08 + 0.92 * pow(1.0 - max(dot(wn, V), 0.0), 5.0);
+    float depth = clamp((uWater - vH) / 0.12, 0.0, 1.0);
+    vec3 deep = mix(uFluid * 0.5, uFluid * 0.12, depth);
+    col = mix(deep, room(reflect(-V, wn)) * 0.8, fres) + uHighlight * pow(max(dot(wn, H), 0.0), 90.0) * 0.9;
+    float foam = (1.0 - smoothstep(0.0, 0.02, uWater - vH)) * (0.6 + 0.4 * noise(vG * 40.0 + uTime));
+    col = mix(col, uHighlight * 0.85, foam * 0.7);
+  } else {
+    // Paper: matte with a fine grain, lines in the highlight colour, peaks tinted by the rim.
+    float grain = noise(vG * 60.0) * 0.5 + noise(vG * 140.0) * 0.5;
+    vec3 matte = mix(uShadow * 0.3, albedo, 0.25 + 0.75 * diff) * (0.9 + 0.2 * grain);
+    col = mix(matte, uHighlight, line * 0.85) + uRim * smoothstep(0.5, 0.9, t) * 0.5;
+    if (uMaterial == 1) {
+      float shore = 1.0 - smoothstep(0.0, 0.02, vH - uWater);
+      col = mix(col, uHighlight * 0.8, shore * 0.5);
+    }
+  }
+  // Haze with distance, and a soft edge at the sides and the far end.
+  float fog = smoothstep(-0.8, -2.9, vW.z);
+  float edge = (1.0 - smoothstep(1.5, 1.9, abs(vW.x))) * (1.0 - smoothstep(-2.4, -2.9, vW.z));
+  col = mix(col, vec3(0.0), fog * 0.7);
+  float a = edge * (1.0 - fog * 0.6);
+  gl_FragColor = vec4(col * a, a);
+}`;
+
+/** A WebGL terrain renderer, or null if WebGL isn't available. */
+export function createTerrainGl(): TerrainGl | null {
+  const canvas = document.createElement("canvas");
+  const gl = canvas.getContext("webgl", { premultipliedAlpha: true, antialias: true, alpha: true, depth: true });
+  if (!gl) return null;
+  // Contour lines need screen-space derivatives; without them, no lines (and no renderer).
+  if (!gl.getExtension("OES_standard_derivatives")) return null;
+  const program = createProgram(gl, VERTEX, FRAGMENT, "Terrain");
+  if (!program) return null;
+  gl.useProgram(program);
+
+  const n = GRID;
+  const verts = new Float32Array(n * n * 2);
+  const indices = new Uint16Array((n - 1) * (n - 1) * 6);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      verts[(j * n + i) * 2] = (i / (n - 1)) * 2 - 1;
+      verts[(j * n + i) * 2 + 1] = j / (n - 1);
+    }
+  }
+  let k = 0;
+  for (let j = 0; j < n - 1; j++) {
+    for (let i = 0; i < n - 1; i++) {
+      const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+      indices[k++] = a; indices[k++] = c; indices[k++] = b;
+      indices[k++] = b; indices[k++] = c; indices[k++] = d;
+    }
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(program, "aPos");
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+  gl.enable(gl.DEPTH_TEST);
+
+  // The row history (RGBA so every driver takes it; height is in R).
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, COLS, ROWS, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(COLS * ROWS * 4));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+
+  const u = uniformLocations(gl, program, [
+    "uViewProj", "uHist", "uNewest", "uFrac", "uAmp", "uRowAbs", "uWater", "uBass", "uEye", "uTime",
+    "uMaterial", "uPattern", "uSwatch", "uSwatchCount", "uFluid", "uLight", "uShadow", "uHighlight", "uRim",
+  ] as const);
+  gl.uniform1i(u.uHist, 0);
+  setColor(gl, u.uEye, EYE as [number, number, number]);
+  const swatchData = new Float32Array(15);
+  let uploadedImage: Uint8Array | null = null;
+
+  return {
+    canvas,
+    resize(w, h) {
+      canvas.width = w;
+      canvas.height = h;
+      gl.viewport(0, 0, w, h);
+      // Widen the view for tall windows so the land still fills them.
+      const aspect = w / h;
+      const viewProj = multiply(perspective(FOV * Math.max(1, 1.15 / aspect), aspect, 0.1, 30), lookAt(EYE, TARGET, [0, 1, 0]));
+      gl.uniformMatrix4fv(u.uViewProj, false, viewProj);
+    },
+    render({ state, material, pattern, lights }) {
+      // Upload the rows written since last time (all of them after a new state).
+      if (uploadedImage !== state.image) {
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, COLS, ROWS, gl.RGBA, gl.UNSIGNED_BYTE, state.image);
+        uploadedImage = state.image;
+      } else {
+        for (const row of state.dirty) {
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, row, COLS, 1, gl.RGBA, gl.UNSIGNED_BYTE, state.image.subarray(row * COLS * 4, (row + 1) * COLS * 4));
+        }
+      }
+      state.dirty.length = 0;
+
+      gl.uniform1f(u.uNewest, newestRow(state));
+      gl.uniform1f(u.uFrac, rowFraction(state));
+      gl.uniform1f(u.uRowAbs, state.rows - 1);
+      gl.uniform1f(u.uAmp, state.amp);
+      gl.uniform1f(u.uTime, state.time);
+      gl.uniform1f(u.uBass, state.bass);
+      gl.uniform1i(u.uMaterial, material === "flooded" ? 1 : 0);
+      gl.uniform1i(u.uPattern, pattern === "splinter" ? 1 : 0);
+      gl.uniform1f(u.uWater, material === "flooded" ? waterLevel(state) : -10);
+      const sw = lights.swatches;
+      for (let i = 0; i < 5; i++) swatchData.set(sw[Math.min(i, sw.length - 1)], i * 3);
+      gl.uniform3fv(u.uSwatch, swatchData);
+      gl.uniform1i(u.uSwatchCount, sw.length);
+      setColor(gl, u.uFluid, lights.fluid);
+      setColor(gl, u.uLight, lights.light);
+      setColor(gl, u.uShadow, lights.shadow);
+      setColor(gl, u.uHighlight, lights.highlight);
+      setColor(gl, u.uRim, lights.rim);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+    },
+  };
+}

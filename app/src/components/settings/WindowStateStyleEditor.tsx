@@ -1,4 +1,4 @@
-import { VISUALIZER_FPS_OPTIONS, type CelEdges, type VisualizerFilter, type VisualizerFps } from "../../types/style";
+import { VISUALIZER_FPS_OPTIONS, type CelEdges, type TerrainMaterial, type TerrainPattern, type VisualizerFilter, type VisualizerFps } from "../../types/style";
 import type { BackgroundStyle, BackgroundMode, VisualizerPreset, VisualizerColorSource, UnfocusedVisualizerMode } from "../../types/style";
 import { PALETTE_MAX, PALETTE_MIN } from "../../lib/color";
 import { PRESET_GROUPS, PRESET_LABELS } from "../../lib/visualizerPresets";
@@ -41,6 +41,16 @@ const VIZ_FILTERS: { value: VisualizerFilter; label: string }[] = [
 const CEL_EDGES: { value: CelEdges; label: string }[] = [
   { value: "dark", label: "Dark" },
   { value: "light", label: "Light" },
+];
+
+const TERRAIN_MATERIAL_OPTIONS: { value: TerrainMaterial; label: string }[] = [
+  { value: "paper", label: "Paper" },
+  { value: "flooded", label: "Flooded" },
+];
+
+const TERRAIN_PATTERN_OPTIONS: { value: TerrainPattern; label: string }[] = [
+  { value: "plain", label: "Plain" },
+  { value: "splinter", label: "Splinter" },
 ];
 
 /** The rows of the Background settings group (mode, then the mode's own
@@ -103,6 +113,25 @@ export default function WindowStateStyleEditor({ draft, onChange, smallText, inp
               ))}
             </select>
           </SettingRow>
+
+          {draft.visualizerPreset === "terrain" && (
+            <>
+              <SettingRow label="Material" title="Paper is a matte contour map; Flooded fills the valleys with water that recedes as the music gets louder.">
+                <Segmented
+                  options={TERRAIN_MATERIAL_OPTIONS}
+                  value={draft.terrainMaterial}
+                  onChange={(terrainMaterial) => update({ terrainMaterial })}
+                />
+              </SettingRow>
+              <SettingRow label="Pattern" title="Plain colours the land by height; Splinter paints it in an angular camouflage of the palette's colours.">
+                <Segmented
+                  options={TERRAIN_PATTERN_OPTIONS}
+                  value={draft.terrainPattern}
+                  onChange={(terrainPattern) => update({ terrainPattern })}
+                />
+              </SettingRow>
+            </>
+          )}
 
           <SettingRow
             label="Colors"

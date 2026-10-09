@@ -29,6 +29,11 @@ export type VisualizerFps = (typeof VISUALIZER_FPS_OPTIONS)[number];
 
 export type VisualizerColorSource = "accent" | "custom" | "palette";
 
+/** The Terrain preset's surface: a matte contour map, or one with water in the valleys. */
+export type TerrainMaterial = "paper" | "flooded";
+/** The Terrain preset's colouring: by height, or a splinter camouflage in the palette. */
+export type TerrainPattern = "plain" | "splinter";
+
 export type VisualizerPreset =
   | "xmb-smoke"
   | "starfield"
@@ -36,6 +41,8 @@ export type VisualizerPreset =
   | "noise-flow"
   | "lava-lamp"
   | "ferrofluid"
+  | "liquid-metal"
+  | "terrain"
   | "disco-ball"
   | "pipes";
 
@@ -58,6 +65,8 @@ export interface BackgroundStyle {
   visualizerColor: string;
   /** 2-5 "#rrggbb" colors, used when visualizerColorSource is "palette". */
   visualizerPalette: string[];
+  terrainMaterial: TerrainMaterial;
+  terrainPattern: TerrainPattern;
   unfocusedVisualizerMode: UnfocusedVisualizerMode;
   /**
    * Each preset's own strength, reactivity, speed, filters and colours,
@@ -77,6 +86,8 @@ export interface PresetStyleFields {
   visualizerColorSource: VisualizerColorSource;
   visualizerColor: string;
   visualizerPalette: string[];
+  terrainMaterial: TerrainMaterial;
+  terrainPattern: TerrainPattern;
 }
 
 export interface StyleSettings {
@@ -121,6 +132,8 @@ export const DEFAULT_BACKGROUND_STYLE: BackgroundStyle = {
   visualizerColorSource: "accent",
   visualizerColor: "#3a86ff",
   visualizerPalette: DEFAULT_VISUALIZER_PALETTE,
+  terrainMaterial: "paper",
+  terrainPattern: "plain",
   unfocusedVisualizerMode: "paused",
   presetStyles: {},
 };

@@ -3,12 +3,12 @@
 // lib/ferroSim), then scaled into a puddle or a ball. The fragment shader
 // rebuilds the surface normal from three nearby samples of the same surface
 // function and shades a glossy liquid in the palette's colours (see
-// lib/ferroLights). It draws into its own offscreen WebGL canvas, which the
+// lib/paletteLights). It draws into its own offscreen WebGL canvas, which the
 // scene copies onto its 2D canvas, like the Lava Lamp.
 
 import { cubeSphere } from "../../lib/cubeSphere";
 import type { FerroSite } from "../../lib/ferroSim";
-import type { FerroLights } from "../../lib/ferroLights";
+import type { PaletteLights } from "../../lib/paletteLights";
 import type { CelEdges } from "../../types/style";
 
 export interface FerroGlFrame {
@@ -17,7 +17,7 @@ export interface FerroGlFrame {
   scale: readonly [number, number, number];
   /** 0 = puddle .. 1 = ball. */
   gather: number;
-  lights: FerroLights;
+  lights: PaletteLights;
   /** Cel-shade in 3D (flat tone bands, ink outlines) with this edge colour; null for the glossy look. */
   cel: CelEdges | null;
 }

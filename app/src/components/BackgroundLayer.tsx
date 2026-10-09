@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { CelEdges, VisualizerFilter, VisualizerPreset } from "../types/style";
+import type { CelEdges, TerrainMaterial, TerrainPattern, VisualizerFilter, VisualizerPreset } from "../types/style";
 import type { SpectrumState } from "../hooks/useSpectrum";
 import XmbSmokeVisualizer from "./visualizers/XmbSmokeVisualizer";
 import StarfieldVisualizer from "./visualizers/StarfieldVisualizer";
@@ -7,6 +7,8 @@ import MatrixRainVisualizer from "./visualizers/MatrixRainVisualizer";
 import NoiseFlowVisualizer from "./visualizers/NoiseFlowVisualizer";
 import LavaLampVisualizer from "./visualizers/LavaLampVisualizer";
 import FerrofluidVisualizer from "./visualizers/FerrofluidVisualizer";
+import LiquidMetalVisualizer from "./visualizers/LiquidMetalVisualizer";
+import TerrainVisualizer from "./visualizers/TerrainVisualizer";
 import DiscoBallVisualizer from "./visualizers/DiscoBallVisualizer";
 import PipesVisualizer from "./visualizers/PipesVisualizer";
 
@@ -23,6 +25,8 @@ interface BackgroundLayerProps {
   visualizerFps: number;
   visualizerFilters: readonly VisualizerFilter[];
   visualizerCelEdges: CelEdges;
+  terrainMaterial: TerrainMaterial;
+  terrainPattern: TerrainPattern;
   masterLevel: number;
   spectrum: RefObject<SpectrumState>;
 }
@@ -40,6 +44,8 @@ export default function BackgroundLayer({
   visualizerFps,
   visualizerFilters,
   visualizerCelEdges,
+  terrainMaterial,
+  terrainPattern,
   masterLevel,
   spectrum,
 }: BackgroundLayerProps) {
@@ -61,6 +67,8 @@ export default function BackgroundLayer({
           fps={visualizerFps}
           filters={visualizerFilters}
           celEdges={visualizerCelEdges}
+          terrainMaterial={terrainMaterial}
+          terrainPattern={terrainPattern}
           paused={visualizerPaused}
           masterLevel={masterLevel}
           spectrum={spectrum}
@@ -78,6 +86,8 @@ function VisualizerSwitch({
   fps,
   filters,
   celEdges,
+  terrainMaterial,
+  terrainPattern,
   paused,
   masterLevel,
   spectrum,
@@ -89,6 +99,8 @@ function VisualizerSwitch({
   fps: number;
   filters: readonly VisualizerFilter[];
   celEdges: CelEdges;
+  terrainMaterial: TerrainMaterial;
+  terrainPattern: TerrainPattern;
   paused: boolean;
   masterLevel: number;
   spectrum: RefObject<SpectrumState>;
@@ -108,6 +120,10 @@ function VisualizerSwitch({
       return <LavaLampVisualizer {...props} />;
     case "ferrofluid":
       return <FerrofluidVisualizer {...props} />;
+    case "liquid-metal":
+      return <LiquidMetalVisualizer {...props} />;
+    case "terrain":
+      return <TerrainVisualizer {...props} material={terrainMaterial} pattern={terrainPattern} />;
     case "disco-ball":
       return <DiscoBallVisualizer {...props} />;
     case "pipes":

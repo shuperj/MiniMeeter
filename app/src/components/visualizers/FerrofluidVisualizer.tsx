@@ -2,7 +2,7 @@ import VisualizerCanvas, { type Scene, type VisualizerProps } from "./Visualizer
 import { createBandGroups } from "../../lib/spectrumBands";
 import { SPECTRUM_BANDS } from "../../hooks/useSpectrum";
 import { bodyScale, createFerro, stepFerro, SITE_COUNT, type FerroState } from "../../lib/ferroSim";
-import { ferroLights, type FerroLights } from "../../lib/ferroLights";
+import { paletteLights, type PaletteLights } from "../../lib/paletteLights";
 import { createFerroGl, CAMERA_ELEVATION, SPIKE_LENGTH } from "./ferroGl";
 
 function createFerrofluid(ctx: CanvasRenderingContext2D): Scene {
@@ -12,7 +12,7 @@ function createFerrofluid(ctx: CanvasRenderingContext2D): Scene {
   // Shade on the GPU when possible; else a flat sketch of the same state.
   const gl = createFerroGl(SITE_COUNT);
   let paletteSource: readonly string[] | null = null;
-  let lights: FerroLights | null = null;
+  let lights: PaletteLights | null = null;
 
   return {
     resize(w, h) {
@@ -23,7 +23,7 @@ function createFerrofluid(ctx: CanvasRenderingContext2D): Scene {
       const { groups, bass, mid, treble, onset } = bands(spectrum, level, dt);
       if (palette !== paletteSource) {
         paletteSource = palette;
-        lights = ferroLights(palette);
+        lights = paletteLights(palette);
       }
       // The bass carries most of the weight: it is what drives the magnet.
       const loudness = Math.min(1, bass * 0.7 + mid * 0.6 + treble * 0.4);
@@ -48,7 +48,7 @@ const rgb = (c: readonly [number, number, number], a = 1) =>
  * CPU fallback without WebGL: the body as a shaded ellipse and each visible
  * spike as a triangle, projected the way the camera would see them.
  */
-function drawFlat(ctx: CanvasRenderingContext2D, w: number, h: number, state: FerroState, lights: FerroLights) {
+function drawFlat(ctx: CanvasRenderingContext2D, w: number, h: number, state: FerroState, lights: PaletteLights) {
   const [sx, sy, sz] = bodyScale(state);
   const cosE = Math.cos(CAMERA_ELEVATION);
   const sinE = Math.sin(CAMERA_ELEVATION);

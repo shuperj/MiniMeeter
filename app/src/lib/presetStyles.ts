@@ -4,7 +4,7 @@
 // incoming one's, so Ferrofluid can run with a palette and the Cel filter
 // while Waves keeps the accent colour and nothing else.
 
-import type { BackgroundStyle, CelEdges, VisualizerColorSource, VisualizerPreset } from "../types/style";
+import type { BackgroundStyle, CelEdges, TerrainMaterial, TerrainPattern, VisualizerColorSource, VisualizerPreset } from "../types/style";
 import { DEFAULT_VISUALIZER_PALETTE } from "../types/style";
 import { normalizePalette } from "./color";
 import { normalizeFilters } from "./visualizerFilter";
@@ -20,6 +20,8 @@ export const PRESET_STYLE_KEYS = [
   "visualizerColorSource",
   "visualizerColor",
   "visualizerPalette",
+  "terrainMaterial",
+  "terrainPattern",
 ] as const;
 
 export type PresetStyle = Pick<BackgroundStyle, (typeof PRESET_STYLE_KEYS)[number]>;
@@ -35,6 +37,8 @@ export function presetStyleOf(bg: BackgroundStyle): PresetStyle {
     visualizerColorSource: bg.visualizerColorSource,
     visualizerColor: bg.visualizerColor,
     visualizerPalette: [...bg.visualizerPalette],
+    terrainMaterial: bg.terrainMaterial,
+    terrainPattern: bg.terrainPattern,
   };
 }
 
@@ -54,6 +58,8 @@ export function switchPreset(bg: BackgroundStyle, next: VisualizerPreset): Backg
 }
 
 const COLOR_SOURCES: readonly VisualizerColorSource[] = ["accent", "custom", "palette"];
+export const TERRAIN_MATERIALS: readonly TerrainMaterial[] = ["paper", "flooded"];
+export const TERRAIN_PATTERNS: readonly TerrainPattern[] = ["plain", "splinter"];
 const isUnit = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
 
 /** A saved per-preset store, cleaned: known presets, known keys, valid values. */
@@ -72,6 +78,8 @@ export function normalizePresetStyles(raw: unknown): Partial<Record<VisualizerPr
     if (COLOR_SOURCES.includes(e.visualizerColorSource as VisualizerColorSource)) style.visualizerColorSource = e.visualizerColorSource as VisualizerColorSource;
     if (typeof e.visualizerColor === "string" && /^#[0-9a-f]{6}$/i.test(e.visualizerColor)) style.visualizerColor = e.visualizerColor;
     if (Array.isArray(e.visualizerPalette)) style.visualizerPalette = normalizePalette(e.visualizerPalette, DEFAULT_VISUALIZER_PALETTE);
+    if (TERRAIN_MATERIALS.includes(e.terrainMaterial as TerrainMaterial)) style.terrainMaterial = e.terrainMaterial as TerrainMaterial;
+    if (TERRAIN_PATTERNS.includes(e.terrainPattern as TerrainPattern)) style.terrainPattern = e.terrainPattern as TerrainPattern;
     out[preset as VisualizerPreset] = style;
   }
   return out;
