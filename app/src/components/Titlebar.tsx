@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import type { A1Device } from "../config";
-import type { WindowPreset } from "../types/style";
+import type { TitlebarStyle, WindowPreset } from "../types/style";
 import { invoke } from "@tauri-apps/api/core";
 
 interface TitlebarProps {
@@ -20,7 +20,29 @@ interface TitlebarProps {
   onPinToggle: () => void;
   /** Sizes offered when right-clicking the minimize button. */
   windowPresets: WindowPreset[];
+  titlebarStyle: TitlebarStyle;
 }
+
+/**
+ * The bar's surface per style. Mica and Clear are frosted glass over the
+ * background (blurred by backdrop-filter), one tinted with the accent, one
+ * neutral; their text stays readable against whatever moves behind.
+ */
+const SURFACES: Record<TitlebarStyle, CSSProperties> = {
+  solid: { backgroundColor: "var(--accent)", "--titlebar-fg": "var(--accent-fg)" } as CSSProperties,
+  mica: {
+    backgroundColor: "rgba(var(--accent-r), var(--accent-g), var(--accent-b), 0.45)",
+    backdropFilter: "blur(18px) saturate(1.4)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12), inset 0 -1px 0 rgba(0,0,0,0.25)",
+    "--titlebar-fg": "var(--accent-fg)",
+  } as CSSProperties,
+  clear: {
+    backgroundColor: "rgba(30, 30, 30, 0.4)",
+    backdropFilter: "blur(18px) saturate(1.3)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.1), inset 0 -1px 0 rgba(0,0,0,0.25)",
+    "--titlebar-fg": "#ffffff",
+  } as CSSProperties,
+};
 
 function formatDb(v: number): string {
   const rounded = Math.round(v);
@@ -28,7 +50,7 @@ function formatDb(v: number): string {
   return `${sign}${String(Math.abs(rounded)).padStart(2, "0")}dB`;
 }
 
-export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, onAppsClick, appsOpen, busGain, showOutputLevel, reconnecting, pinned, onPinToggle, windowPresets }: TitlebarProps) {
+export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettingsClick, onAppsClick, appsOpen, busGain, showOutputLevel, reconnecting, pinned, onPinToggle, windowPresets, titlebarStyle }: TitlebarProps) {
   const appWindow = getCurrentWindow();
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
@@ -91,14 +113,14 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       // stays closable/movable while waiting for Voicemeeter. The settings panel
       // (z-50) is still allowed to cover it.
       className="relative z-[45] flex items-center h-[clamp(24px,8dvh,36px)] px-[clamp(6px,2vw,12px)] select-none shrink-0"
-      style={{ backgroundColor: "var(--accent)" }}
+      style={SURFACES[titlebarStyle]}
       data-tauri-drag-region
     >
       {/* Pin / always-on-top */}
       <button
         className="w-[clamp(16px,4vw,24px)] h-[clamp(16px,4dvh,24px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer hover:bg-white/20 mr-[clamp(2px,0.5vw,6px)] shrink-0"
         style={{
-          color: "var(--accent-fg)",
+          color: "var(--titlebar-fg)",
           backgroundColor: pinned ? "rgba(255,255,255,0.28)" : "transparent",
           opacity: pinned ? 1 : 0.65,
         }}
@@ -118,7 +140,7 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       {/* Settings gear */}
       <button
         className="w-[clamp(16px,4vw,24px)] h-[clamp(16px,4dvh,24px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer hover:bg-white/20 mr-[clamp(2px,0.5vw,6px)] shrink-0"
-        style={{ color: "var(--accent-fg)", backgroundColor: "transparent" }}
+        style={{ color: "var(--titlebar-fg)", backgroundColor: "transparent" }}
         onClick={onSettingsClick}
         title="Settings"
       >
@@ -139,7 +161,7 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       <button
         className="w-[clamp(16px,4vw,24px)] h-[clamp(16px,4dvh,24px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer hover:bg-white/20 mr-[clamp(2px,0.5vw,6px)] shrink-0"
         style={{
-          color: "var(--accent-fg)",
+          color: "var(--titlebar-fg)",
           backgroundColor: appsOpen ? "rgba(255,255,255,0.28)" : "transparent",
         }}
         onClick={onAppsClick}
@@ -158,7 +180,7 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       {/* App title — hides at very small widths */}
       <span
         className="text-[clamp(0.55rem,2.2vw,0.75rem)] font-bold mr-auto truncate hidden min-[260px]:block"
-        style={{ color: "var(--accent-fg)" }}
+        style={{ color: "var(--titlebar-fg)" }}
         data-tauri-drag-region
       >
         MiniMeeter
@@ -168,7 +190,7 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       {busy && (
         <span
           className="w-[clamp(8px,2vw,11px)] h-[clamp(8px,2vw,11px)] rounded-full border-2 border-white/25 animate-spin mr-[clamp(3px,0.8vw,6px)] shrink-0"
-          style={{ borderTopColor: "var(--accent-fg)" }}
+          style={{ borderTopColor: "var(--titlebar-fg)" }}
           title="Reconnecting to Voicemeeter…"
         />
       )}
@@ -188,7 +210,7 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       {showOutputLevel && (
         <span
           className="text-[clamp(0.5rem,1.6vw,0.65rem)] font-bold tabular-nums whitespace-nowrap mr-[clamp(3px,0.8vw,6px)] hidden min-[260px]:block"
-          style={{ color: "var(--accent-fg)", opacity: 0.8 }}
+          style={{ color: "var(--titlebar-fg)", opacity: 0.8 }}
           title="A1 output gain"
         >
           {formatDb(busGain)}
@@ -199,13 +221,13 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
       <div className="flex items-center gap-[clamp(2px,0.5vw,4px)] mr-[clamp(4px,1vw,8px)]">
         <span
           className="text-[clamp(0.5rem,1.8vw,0.65rem)] font-bold hidden min-[240px]:block"
-          style={{ color: "var(--accent-fg)" }}
+          style={{ color: "var(--titlebar-fg)" }}
         >
           A1:
         </span>
         <select
           className="bg-black/20 border-none rounded-[3px] text-[clamp(0.5rem,1.6vw,0.65rem)] px-[clamp(2px,0.5vw,4px)] py-[1px] max-w-[clamp(60px,20vw,160px)] truncate outline-none cursor-pointer disabled:opacity-60"
-          style={{ color: "var(--accent-fg)" }}
+          style={{ color: "var(--titlebar-fg)" }}
           value={selectedA1}
           onChange={handleA1Change}
           disabled={switching}
@@ -224,7 +246,7 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
         <div className="relative" ref={presetMenuRef}>
           <button
             className="w-[clamp(16px,4vw,28px)] h-[clamp(16px,4dvh,28px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer text-[clamp(0.5rem,1.5vw,0.7rem)] hover:bg-white/20"
-            style={{ color: "var(--accent-fg)", backgroundColor: "transparent" }}
+            style={{ color: "var(--titlebar-fg)", backgroundColor: "transparent" }}
             onClick={() => appWindow.minimize()}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -263,7 +285,7 @@ export default function Titlebar({ selectedA1, a1Choices, onA1Change, onSettings
         </div>
         <button
           className="w-[clamp(16px,4vw,28px)] h-[clamp(16px,4dvh,28px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer text-[clamp(0.5rem,1.5vw,0.7rem)] hover:bg-red-500/80"
-          style={{ color: "var(--accent-fg)", backgroundColor: "transparent" }}
+          style={{ color: "var(--titlebar-fg)", backgroundColor: "transparent" }}
           onClick={() => appWindow.close()}
         >
           ✕

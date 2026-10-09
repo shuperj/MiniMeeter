@@ -95,6 +95,10 @@ function migrateSettings(raw: any): StyleSettings {
   delete s.unfocused;
   delete s.unfocusedVisualizerMode;
 
+  if (!["solid", "mica", "clear"].includes(s.titlebarStyle)) {
+    s.titlebarStyle = "solid";
+  }
+
   return s;
 }
 
