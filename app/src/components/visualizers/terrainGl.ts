@@ -51,7 +51,7 @@ const FOV = (50 * Math.PI) / 180;
 const HEIGHT_GLSL = `
 uniform sampler2D uHist;
 uniform float uNewest, uFrac, uAmp, uRowAbs;
-const float ROWS = ${ROWS}.0, VISIBLE = ${VISIBLE}.0, XW = ${XW}, ZW = ${ZW};
+const float COLS = ${COLS}.0, ROWS = ${ROWS}.0, VISIBLE = ${VISIBLE}.0, XW = ${XW}, ZW = ${ZW};
 const float PERIOD = ${SCROLL_PERIOD_ROWS}.0 * (ZW / VISIBLE);   // ground units per wrap
 ${NOISE_GLSL}
 // Value noise that repeats every py cells along y, so it is seamless where
@@ -71,10 +71,16 @@ vec2 ground(vec2 q) {
   float back = q.y * VISIBLE - uFrac;
   return vec2((q.x - 0.5) * 2.0 * XW, mod(uRowAbs - back, ${SCROLL_PERIOD_ROWS}.0) * (ZW / VISIBLE));
 }
-// One row's height at u, read exactly at the row's centre (so the hardware
-// filter only blends across, never between rows).
+// One row's height at u: the two nearest columns, blended here. The hardware
+// filter blends with 8-bit weights, which makes the land a fine staircase
+// across: invisible as shape, but the contour widths (fwidth) and the normals
+// see every step, and the steep slopes and ridges shimmer as the land slides.
 float rowAt(float u, float row) {
-  return texture2D(uHist, vec2(u, (row + 0.5) / ROWS)).r;
+  float x = clamp(u * COLS - 0.5, 0.0, COLS - 1.0);
+  float c0 = floor(x);
+  float c1 = min(c0 + 1.0, COLS - 1.0);
+  float v = (row + 0.5) / ROWS;
+  return mix(texture2D(uHist, vec2((c0 + 0.5) / COLS, v)).r, texture2D(uHist, vec2((c1 + 0.5) / COLS, v)).r, x - c0);
 }
 float height(vec2 q) {
   float back = q.y * VISIBLE - uFrac;
@@ -303,12 +309,13 @@ export function createTerrainGl(): TerrainGl | null {
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 
-  // The row history (RGBA so every driver takes it; height is in R).
+  // The row history (RGBA so every driver takes it; height is in R). Read
+  // texel by texel: the shader does its own blending (rowAt).
   const texture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, COLS, ROWS, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(COLS * ROWS * 4));
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
 
