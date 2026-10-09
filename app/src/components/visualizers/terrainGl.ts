@@ -34,6 +34,12 @@ const GRID = 150;
 /** Half the width of the land, and its depth, in world units. */
 const XW = 1.9;
 const ZW = 4.2;
+/**
+ * The scroll distance wraps every this many rows (105 ground units, ~96 s)
+ * so the shader's floats stay precise however long the app runs. Every noise
+ * term is periodic in exactly that distance, so the wrap is seamless.
+ */
+export const SCROLL_PERIOD_ROWS = 1200;
 const EYE = [0, 1.45, 1.55];
 const TARGET = [0, 0.1, -1.05];
 const FOV = (50 * Math.PI) / 180;
@@ -46,14 +52,24 @@ const HEIGHT_GLSL = `
 uniform sampler2D uHist;
 uniform float uNewest, uFrac, uAmp, uRowAbs;
 const float ROWS = ${ROWS}.0, VISIBLE = ${VISIBLE}.0, XW = ${XW}, ZW = ${ZW};
+const float PERIOD = ${SCROLL_PERIOD_ROWS}.0 * (ZW / VISIBLE);   // ground units per wrap
 ${NOISE_GLSL}
+// Value noise that repeats every py cells along y, so it is seamless where
+// the scroll distance wraps (py = frequency x PERIOD, a whole number).
+float pnoise(vec2 p, float py) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float y0 = mod(i.y, py), y1 = mod(i.y + 1.0, py);
+  return mix(mix(hash(vec2(i.x, y0)), hash(vec2(i.x + 1.0, y0)), f.x), mix(hash(vec2(i.x, y1)), hash(vec2(i.x + 1.0, y1)), f.x), f.y);
+}
 // Ground coordinates of a grid point: across in world units, and the row's
-// distance in the same units, so patterns and hills move with the land. At
-// the very front the distance back dips below zero: that reads the live row
-// ahead of the newest (lib/terrainSim), so the front edge never steps.
+// distance in the same units (wrapped every PERIOD), so patterns and hills
+// move with the land. At the very front the distance back dips below zero:
+// that reads the live row ahead of the newest (lib/terrainSim), so the
+// front edge never steps.
 vec2 ground(vec2 q) {
   float back = q.y * VISIBLE - uFrac;
-  return vec2((q.x - 0.5) * 2.0 * XW, (uRowAbs - back) * (ZW / VISIBLE));
+  return vec2((q.x - 0.5) * 2.0 * XW, mod(uRowAbs - back, ${SCROLL_PERIOD_ROWS}.0) * (ZW / VISIBLE));
 }
 // One row's height at u, read exactly at the row's centre (so the hardware
 // filter only blends across, never between rows).
@@ -75,9 +91,11 @@ float height(vec2 q) {
   float h = 0.5 * (2.0 * h0 + (h1 - hm) * t + (2.0 * hm - 5.0 * h0 + 4.0 * h1 - h2) * t * t + (3.0 * h0 - hm - 3.0 * h1 + h2) * t * t * t);
   h *= uAmp;
   vec2 g = ground(q);
-  h += (fbm(g * 0.9) - 0.45) * 0.3;
-  // A little grain, so the contours wander like a hand-drawn map.
-  h += (noise(g * 4.0) - 0.5) * 0.02;
+  // Rolling hills (three octaves) and a little grain, so the contours wander
+  // like a hand-drawn map. Each frequency x PERIOD is a whole number of cells.
+  float hills = pnoise(g * 0.8, 0.8 * PERIOD) * 0.5 + pnoise(g * 1.6 + 7.3, 1.6 * PERIOD) * 0.25 + pnoise(g * 3.2 + 2.9, 3.2 * PERIOD) * 0.125;
+  h += (hills - 0.45) * 0.3;
+  h += (pnoise(g * 4.0, 4.0 * PERIOD) - 0.5) * 0.02;
   return h;
 }`;
 
@@ -87,12 +105,12 @@ precision highp int;
 attribute vec2 aPos;            // x -1..1 across, y 0..1 near to far
 uniform mat4 uViewProj;
 uniform float uWater;
+uniform float uFlat;            // 1 = draw the water plane instead of the land
 varying float vH;
 varying vec3 vN;
 varying vec3 vW;
 varying vec2 vG;
 varying vec2 vQ;
-varying float vWet;
 ${HEIGHT_GLSL}
 void main() {
   vec2 q = vec2(aPos.x * 0.5 + 0.5, aPos.y);
@@ -104,9 +122,9 @@ void main() {
   vec3 dz = vec3(0.0, hz1 - hz0, -2.0 * e * ZW);
   vN = normalize(cross(dx, dz));
   vH = h;
-  // Flooded: anything under the water level is lifted to the water surface.
-  vWet = h < uWater ? 1.0 : 0.0;
-  vW = vec3(aPos.x * XW, max(h, uWater), -aPos.y * ZW + 1.3);
+  // The water is the same grid, flat at the water level; the depth test
+  // then cuts the shoreline exactly where the land breaks the surface.
+  vW = vec3(aPos.x * XW, uFlat > 0.5 ? uWater : h, -aPos.y * ZW + 1.3);
   vG = ground(q);
   vQ = q;
   gl_Position = uViewProj * vec4(vW, 1.0);
@@ -124,12 +142,12 @@ uniform float uTime, uWater, uBass;
 uniform int uMaterial, uPattern;
 uniform float uCel;      // 1 = cel-shaded
 uniform vec3 uInk;       // cel outline colour
+uniform float uFlat;
 varying float vH;
 varying vec3 vN;
 varying vec3 vW;
 varying vec2 vG;
 varying vec2 vQ;
-varying float vWet;
 ${HEIGHT_GLSL}
 ${ROOM_GLSL}
 vec3 swatch(float t) {   // 0..1 -> one of the palette's colours
@@ -195,18 +213,21 @@ void main() {
   vec3 albedo = mix(uFluid * 0.5, uLight * 0.75, t);
   if (uPattern == 1) albedo = swatch(camo(vG)) * 0.8;
   vec3 col;
-  if (uMaterial == 1 && vWet > 0.5) {
+  if (uFlat > 0.5) {
     // Water: the fluid colour, lighter in the shallows, the room reflected
-    // in a surface that ripples with the bass, foam along the shore.
+    // in a surface that ripples with the bass, foam along the shore. The
+    // exact height of the land under this pixel sets the depth and the foam.
+    float depthH = uWater - hp;
+    if (depthH < 0.0) discard;
     vec2 rp = vG * 9.0 + uTime * vec2(0.6, 0.4);
     float amp = 0.08 + 0.3 * uBass;
     vec3 wn = normalize(vec3((noise(rp) - 0.5) * amp, 1.0, (noise(rp + 3.7) - 0.5) * amp));
     float fres = 0.08 + 0.92 * pow(1.0 - max(dot(wn, V), 0.0), 5.0);
-    float depth = clamp((uWater - vH) / 0.12, 0.0, 1.0);
+    float depth = clamp(depthH / 0.12, 0.0, 1.0);
     vec3 deep = mix(uFluid * 0.5, uFluid * 0.12, depth);
     if (cel) fres = step(0.5, fres) * 0.7;
     col = mix(deep, room(reflect(-V, wn)) * 0.8, fres) + uHighlight * pow(max(dot(wn, H), 0.0), 90.0) * 0.9;
-    float foam = (1.0 - smoothstep(0.0, 0.02, uWater - vH)) * (0.6 + 0.4 * noise(vG * 40.0 + uTime));
+    float foam = (1.0 - smoothstep(0.0, 0.015, depthH)) * (0.6 + 0.4 * noise(vG * 40.0 + uTime));
     col = mix(col, cel ? uInk : uHighlight * 0.85, foam * 0.7);
   } else {
     // Paper: matte with a fine grain, lines in the highlight colour, peaks tinted by the rim.
@@ -216,7 +237,7 @@ void main() {
     // hunting for edges in the picture afterwards.
     col = mix(matte, cel ? uInk : uHighlight, line * (cel ? 0.95 : 0.85)) + uRim * smoothstep(0.5, 0.9, t) * 0.5;
     if (uMaterial == 1) {
-      float shore = 1.0 - smoothstep(0.0, 0.02, vH - uWater);
+      float shore = 1.0 - smoothstep(0.0, 0.015, hp - uWater);
       col = mix(col, cel ? uInk : uHighlight * 0.8, shore * 0.5);
     }
   }
@@ -294,7 +315,7 @@ export function createTerrainGl(): TerrainGl | null {
   const u = uniformLocations(gl, program, [
     "uViewProj", "uHist", "uNewest", "uFrac", "uAmp", "uRowAbs", "uWater", "uBass", "uEye", "uTime",
     "uMaterial", "uPattern", "uSwatch", "uSwatchCount", "uFluid", "uLight", "uShadow", "uHighlight", "uRim",
-    "uCel", "uInk",
+    "uCel", "uInk", "uFlat",
   ] as const);
   gl.uniform1i(u.uHist, 0);
   setColor(gl, u.uEye, EYE as [number, number, number]);
@@ -348,7 +369,7 @@ export function createTerrainGl(): TerrainGl | null {
 
       gl.uniform1f(u.uNewest, newestRow(state));
       gl.uniform1f(u.uFrac, rowFraction(state));
-      gl.uniform1f(u.uRowAbs, state.rows - 1);
+      gl.uniform1f(u.uRowAbs, (state.rows - 1) % SCROLL_PERIOD_ROWS);
       gl.uniform1f(u.uAmp, state.amp);
       gl.uniform1f(u.uTime, state.time);
       gl.uniform1f(u.uBass, state.bass);
@@ -367,7 +388,13 @@ export function createTerrainGl(): TerrainGl | null {
       gl.uniform1f(u.uCel, cel ? 1 : 0);
       const ink = cel === "light" ? 1 : 0.03;
       gl.uniform3f(u.uInk, ink, ink, ink);
+      gl.uniform1f(u.uFlat, 0);
       gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+      if (material === "flooded") {
+        // The water plane over the land; the depth test keeps the land that breaks the surface.
+        gl.uniform1f(u.uFlat, 1);
+        gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+      }
     },
   };
 }
