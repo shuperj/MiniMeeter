@@ -38,18 +38,13 @@ const EYE = [0, 1.45, 1.55];
 const TARGET = [0, 0.1, -1.05];
 const FOV = (50 * Math.PI) / 180;
 
-const VERTEX = `
-precision highp float;
-precision highp int;
-attribute vec2 aPos;            // x -1..1 across, y 0..1 near to far
-uniform mat4 uViewProj;
+// The land's height, shared by both shaders: the vertex shader shapes the
+// mesh with it, the fragment shader evaluates it again per pixel for the
+// contour lines, so they are exact iso-lines rather than lines through a
+// mesh's interpolation (which swims as the land slides under the grid).
+const HEIGHT_GLSL = `
 uniform sampler2D uHist;
-uniform float uNewest, uFrac, uAmp, uRowAbs, uWater;
-varying float vH;
-varying vec3 vN;
-varying vec3 vW;
-varying vec2 vG;
-varying float vWet;
+uniform float uNewest, uFrac, uAmp, uRowAbs;
 const float ROWS = ${ROWS}.0, VISIBLE = ${VISIBLE}.0, XW = ${XW}, ZW = ${ZW};
 ${NOISE_GLSL}
 // Ground coordinates of a grid point: across in world units, and the row's
@@ -81,9 +76,24 @@ float height(vec2 q) {
   h *= uAmp;
   vec2 g = ground(q);
   h += (fbm(g * 0.9) - 0.45) * 0.3;
-  h += (noise(g * 5.0) - 0.5) * 0.03;
+  // A little grain, so the contours wander like a hand-drawn map.
+  h += (noise(g * 4.0) - 0.5) * 0.02;
   return h;
-}
+}`;
+
+const VERTEX = `
+precision highp float;
+precision highp int;
+attribute vec2 aPos;            // x -1..1 across, y 0..1 near to far
+uniform mat4 uViewProj;
+uniform float uWater;
+varying float vH;
+varying vec3 vN;
+varying vec3 vW;
+varying vec2 vG;
+varying vec2 vQ;
+varying float vWet;
+${HEIGHT_GLSL}
 void main() {
   vec2 q = vec2(aPos.x * 0.5 + 0.5, aPos.y);
   float h = height(q);
@@ -98,6 +108,7 @@ void main() {
   vWet = h < uWater ? 1.0 : 0.0;
   vW = vec3(aPos.x * XW, max(h, uWater), -aPos.y * ZW + 1.3);
   vG = ground(q);
+  vQ = q;
   gl_Position = uViewProj * vec4(vW, 1.0);
 }`;
 
@@ -117,8 +128,9 @@ varying float vH;
 varying vec3 vN;
 varying vec3 vW;
 varying vec2 vG;
+varying vec2 vQ;
 varying float vWet;
-${NOISE_GLSL}
+${HEIGHT_GLSL}
 ${ROOM_GLSL}
 vec3 swatch(float t) {   // 0..1 -> one of the palette's colours
   int i = int(floor(clamp(t, 0.0, 0.999) * float(uSwatchCount)));
@@ -163,13 +175,15 @@ void main() {
   if (cel) diff = floor(diff * 3.0 + 0.5) / 3.0;
   float t = clamp(vH / 0.75, 0.0, 1.0);
 
-  // Contour lines every 0.05 of height, every fifth one heavier.
+  // Contour lines every 0.05 of height, every fifth one heavier, from the
+  // exact height at this pixel.
+  float hp = height(vQ);
   float step1 = 0.05;
-  float f = fract(vH / step1);
+  float f = fract(hp / step1);
   float d = min(f, 1.0 - f) * step1;
-  float fw = max(fwidth(vH), 1e-4);
+  float fw = max(fwidth(hp), 1e-4);
   float line = 1.0 - smoothstep(fw * 0.35, fw * 0.95, d);
-  float f5 = fract(vH / (step1 * 5.0));
+  float f5 = fract(hp / (step1 * 5.0));
   float d5 = min(f5, 1.0 - f5) * step1 * 5.0;
   float heavy = 1.0 - smoothstep(fw * 0.7, fw * 1.6, d5);
   line = max(line * 0.5, heavy * 0.9);
