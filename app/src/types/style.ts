@@ -1,5 +1,8 @@
 export type AccentSource = "system" | "custom";
 
+/** How each channel's gain is drawn: a vertical fader or a rotary knob. */
+export type ChannelControl = "fader" | "knob";
+
 /** A named window size the user can snap to from the titlebar. */
 export interface WindowPreset {
   name: string;
@@ -93,6 +96,7 @@ export interface PresetStyleFields {
 export interface StyleSettings {
   accentSource: AccentSource;
   customAccentColor: string;
+  channelControl: ChannelControl;
   faderColumnWidth: number;
   /**
    * Frosted-glass panel behind each fader, 0 - 1: 0 is fully clear, higher
@@ -141,6 +145,7 @@ export const DEFAULT_BACKGROUND_STYLE: BackgroundStyle = {
 export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   accentSource: "system",
   customAccentColor: "#3a86ff",
+  channelControl: "fader",
   faderColumnWidth: 0,
   faderGlass: 1,
   background: { ...DEFAULT_BACKGROUND_STYLE },

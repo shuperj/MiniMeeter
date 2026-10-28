@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { A1Device } from "../../config";
+import { busLabel } from "../../lib/outputs";
 import { inputCls, smallText, medText, addButtonCls, removeButtonCls } from "./shared";
 
 interface OutputsTabProps {
   draft: A1Device[];
   onChange: (next: A1Device[]) => void;
+  /** Hardware buses this edition has (A1 upward). */
+  hwBusCount: number;
 }
 
 /** Stable identity for an output device across driver + name. */
@@ -15,7 +18,7 @@ const deviceKey = (d: { driver: string; name: string }) => `${d.driver}|${d.name
 export const autoDisplay = (d: { driver: string; name: string }) =>
   `${d.driver.toUpperCase()}: ${d.name}`;
 
-export default function OutputsTab({ draft, onChange }: OutputsTabProps) {
+export default function OutputsTab({ draft, onChange, hwBusCount }: OutputsTabProps) {
   // Output devices Voicemeeter can currently see. Enumerated when the tab mounts.
   const [detectedDevices, setDetectedDevices] = useState<A1Device[]>([]);
   const [deviceError, setDeviceError] = useState<string | null>(null);
@@ -33,6 +36,10 @@ export default function OutputsTab({ draft, onChange }: OutputsTabProps) {
       });
     return () => { cancelled = true; };
   }, []);
+
+  const setBus = (idx: number, bus: number) => {
+    onChange(draft.map((o, i) => (i === idx ? { ...o, bus } : o)));
+  };
 
   const updateField = (idx: number, field: keyof A1Device, value: string) => {
     onChange(draft.map((o, i) => (i === idx ? { ...o, [field]: value } : o)));
@@ -75,7 +82,8 @@ export default function OutputsTab({ draft, onChange }: OutputsTabProps) {
   return (
     <>
       <p className={`${smallText} text-white/50 m-0`}>
-        Configure A1 output device options shown in the title bar dropdown.
+        Devices offered in the title bar dropdown, each for one output bus. Right-click the
+        title bar's output to choose which bus it shows.
       </p>
       {deviceError && (
         <p className={`${smallText} text-amber-300/70 m-0`}>
@@ -114,6 +122,21 @@ export default function OutputsTab({ draft, onChange }: OutputsTabProps) {
             onChange={(e) => updateField(idx, "display", e.target.value)}
             placeholder="Display label (auto)"
           />
+
+          {/* Bus — A1 for entries saved before buses were selectable. */}
+          <select
+            className={`${inputCls} ${medText} px-[clamp(3px,0.5vw,6px)] py-[2px] cursor-pointer shrink-0`}
+            style={{ colorScheme: "dark" }}
+            value={out.bus ?? 0}
+            onChange={(e) => setBus(idx, Number(e.target.value))}
+            title="Output bus this device is for"
+          >
+            {Array.from({ length: Math.max(hwBusCount, (out.bus ?? 0) + 1) }, (_, b) => (
+              <option key={b} value={b}>
+                {busLabel(b)}
+              </option>
+            ))}
+          </select>
 
           <button className={removeButtonCls} onClick={() => removeOutput(idx)} title="Remove output">
             ✕

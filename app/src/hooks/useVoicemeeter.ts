@@ -36,6 +36,16 @@ interface AllBusLevels {
   levels: BusLevel[];
 }
 
+/** A hardware bus's mute and assigned device (empty name: none). */
+export interface BusStatus {
+  muted: boolean;
+  device: string;
+}
+
+interface AllBusStates {
+  buses: (BusStatus & { bus: number })[];
+}
+
 /** Payload of the `vm:connection` event emitted by the Rust polling thread. */
 type VmConnectionPayload =
   | { state: "connected"; edition: EditionInfo }
@@ -85,6 +95,7 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
 
   const [busLevels, setBusLevels] = useState<Map<number, number>>(new Map());
   const [busGains, setBusGains] = useState<Map<number, number>>(new Map());
+  const [busStates, setBusStates] = useState<Map<number, BusStatus>>(new Map());
 
   // Track which strips are being actively dragged to avoid overwriting
   const dragging = useRef<Set<number>>(new Set());
@@ -188,6 +199,10 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
       });
     });
 
+    const unlistenBusState = listen<AllBusStates>("vm:bus-state", (event) => {
+      setBusStates(new Map(event.payload.buses.map(({ bus, muted, device }) => [bus, { muted, device }])));
+    });
+
     return () => {
       cancelled = true;
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
@@ -195,6 +210,7 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
       unlisten.then((fn) => fn());
       unlistenLevels.then((fn) => fn());
       unlistenBusLevels.then((fn) => fn());
+      unlistenBusState.then((fn) => fn());
       invoke("vm_logout").catch(() => {});
     };
   }, [applyStrips]);
@@ -227,6 +243,19 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
     }
   }, []);
 
+  const setBusMute = useCallback(async (bus: number, muted: boolean) => {
+    setBusStates((prev) => {
+      const next = new Map(prev);
+      next.set(bus, { device: prev.get(bus)?.device ?? "", muted });
+      return next;
+    });
+    try {
+      await invoke("vm_set_bus_mute", { bus, muted });
+    } catch {
+      // Silently fail — polling will correct state
+    }
+  }, []);
+
   const startDragging = useCallback((strip: number) => {
     dragging.current.add(strip);
   }, []);
@@ -254,8 +283,10 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
     preFaderLevels,
     busLevels,
     busGains,
+    busStates,
     setGain,
     setMute,
+    setBusMute,
     startDragging,
     stopDragging,
     launchVoicemeeter,

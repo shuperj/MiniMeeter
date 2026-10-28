@@ -5,7 +5,7 @@ import {
   disable as autostartDisable,
   isEnabled as autostartIsEnabled,
 } from "@tauri-apps/plugin-autostart";
-import type { AccentSource, StyleSettings, WindowPreset } from "../../types/style";
+import type { AccentSource, ChannelControl, StyleSettings, WindowPreset } from "../../types/style";
 import { DEFAULT_STYLE_SETTINGS } from "../../types/style";
 import WindowStateStyleEditor from "./WindowStateStyleEditor";
 import SettingsGroup, { SettingRow, Segmented } from "./SettingsGroup";
@@ -24,6 +24,11 @@ interface StyleTabProps {
 const ACCENT_SOURCES: { value: AccentSource; label: string }[] = [
   { value: "system", label: "System" },
   { value: "custom", label: "Custom" },
+];
+
+const CHANNEL_CONTROLS: { value: ChannelControl; label: string }[] = [
+  { value: "fader", label: "Faders" },
+  { value: "knob", label: "Knobs" },
 ];
 
 const checkboxLabelCls = "flex items-center gap-1 cursor-pointer select-none";
@@ -121,7 +126,18 @@ export default function StyleTab({
       </SettingsGroup>
 
       <SettingsGroup title="Faders" storageKey="minimeeter.styleTab.faders.open">
-        <SettingRow label="Width">
+        <SettingRow
+          label="Controls"
+          hint="Knobs grow to fill the window and wrap into rows when that makes them bigger. Drag up or right to turn up, hold Shift for fine steps."
+        >
+          <Segmented
+            options={CHANNEL_CONTROLS}
+            value={draft.channelControl}
+            onChange={(channelControl) => update({ channelControl })}
+          />
+        </SettingRow>
+
+        {draft.channelControl === "fader" && <SettingRow label="Width">
           <label className={checkboxLabelCls}>
             <input
               type="checkbox"
@@ -145,7 +161,7 @@ export default function StyleTab({
               <span className="tabular-nums w-[5ch] text-right shrink-0">{draft.faderColumnWidth}px</span>
             </>
           )}
-        </SettingRow>
+        </SettingRow>}
 
         <SettingRow
           label="Glass"
@@ -207,7 +223,7 @@ export default function StyleTab({
               onChange={(e) => update({ showOutputLevel: e.target.checked })}
               className={checkboxCls}
             />
-            Show A1 output level
+            Show output level
           </label>
         </SettingRow>
 

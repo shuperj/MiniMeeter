@@ -6,11 +6,14 @@ import { DEFAULT_CHANNELS, DEFAULT_A1_CHOICES, DEFAULT_METER_DECAY } from "../co
 const CHANNELS_KEY = "channels";
 const OUTPUTS_KEY = "outputs";
 const METER_DECAY_KEY = "meterDecay";
+const OUTPUT_BUS_KEY = "outputBus";
 
 export function useChannelConfig() {
   const [channels, setChannels] = useState<ChannelConfig[]>(DEFAULT_CHANNELS);
   const [outputs, setOutputs] = useState<A1Device[]>(DEFAULT_A1_CHOICES);
   const [meterDecay, setMeterDecay] = useState(DEFAULT_METER_DECAY);
+  // The hardware bus the titlebar picker shows and switches (0 = A1).
+  const [outputBus, setOutputBus] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [needsOutputSetup, setNeedsOutputSetup] = useState(false);
 
@@ -33,6 +36,10 @@ export function useChannelConfig() {
         const savedDecay = await store.get<number>(METER_DECAY_KEY);
         if (!cancelled && savedDecay != null) {
           setMeterDecay(savedDecay);
+        }
+        const savedBus = await store.get<number>(OUTPUT_BUS_KEY);
+        if (!cancelled && savedBus != null) {
+          setOutputBus(savedBus);
         }
       } catch {
         // First run or corrupt store — use defaults
@@ -73,5 +80,15 @@ export function useChannelConfig() {
     }
   }, []);
 
-  return { channels, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded, needsOutputSetup, setNeedsOutputSetup };
+  const saveOutputBus = useCallback(async (next: number) => {
+    setOutputBus(next);
+    try {
+      const store = await load("settings.json", { defaults: {}, autoSave: true });
+      await store.set(OUTPUT_BUS_KEY, next);
+    } catch {
+      // Non-critical
+    }
+  }, []);
+
+  return { channels, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, outputBus, saveOutputBus, loaded, needsOutputSetup, setNeedsOutputSetup };
 }

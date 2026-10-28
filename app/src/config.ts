@@ -15,6 +15,8 @@ export interface A1Device {
   driver: string;
   name: string;
   display: string;
+  /** Hardware bus this device is offered for: 0 = A1 (the default), 1 = A2, ... */
+  bus?: number;
 }
 
 export const DEFAULT_CHANNELS: ChannelConfig[] = [

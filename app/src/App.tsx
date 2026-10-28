@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { A1Device } from "./config";
+import { clampBus } from "./lib/outputs";
 import { useVoicemeeter } from "./hooks/useVoicemeeter";
 import { useAccentColor } from "./hooks/useAccentColor";
 import { useChannelConfig } from "./hooks/useChannelConfig";
@@ -13,6 +14,9 @@ import { useFxGroups } from "./hooks/useFxGroups";
 import type { StyleSettings, UnfocusedVisualizerMode } from "./types/style";
 import Titlebar from "./components/Titlebar";
 import Fader from "./components/Fader";
+import Knob from "./components/Knob";
+import { knobColumns } from "./lib/knob";
+import { useElementSize } from "./hooks/useElementSize";
 import BackgroundLayer from "./components/BackgroundLayer";
 import { visualizerLevel } from "./lib/visualizerLevel";
 import { hexToRgb } from "./lib/color";
@@ -143,7 +147,7 @@ export default function App() {
     invoke("set_window_opacity", { opacity: effectiveSettings.globalOpacity ?? 1 }).catch(() => {});
   }, [effectiveSettings.globalOpacity, styleLoaded]);
 
-  const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, loaded, needsOutputSetup, setNeedsOutputSetup } = useChannelConfig();
+  const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, outputBus: savedOutputBus, saveOutputBus, loaded, needsOutputSetup, setNeedsOutputSetup } = useChannelConfig();
   const {
     connection,
     connected,
@@ -154,8 +158,10 @@ export default function App() {
     levels,
     preFaderLevels,
     busGains,
+    busStates,
     setGain,
     setMute,
+    setBusMute,
     startDragging,
     stopDragging,
     launchVoicemeeter,
@@ -168,7 +174,9 @@ export default function App() {
   // A drop after we've been live (engine restart, device switch) is transient —
   // show it in the titlebar rather than blanking the window.
   const reconnecting = everConnected && connection !== "connected";
-  const [selectedA1, setSelectedA1] = useState(0);
+  // The titlebar's output: the saved bus, or A1 on an edition without it.
+  const hwBusCount = edition.buses.filter((b) => !b.isVirtual).length;
+  const outputBus = clampBus(savedOutputBus, hwBusCount);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
 
@@ -215,6 +223,29 @@ export default function App() {
     ? { "--fader-max-w": `${faderWidth}px` } as React.CSSProperties
     : undefined;
 
+  // Knobs: as many columns as makes each dial biggest in the space there is.
+  const knobMode = effectiveSettings.channelControl === "knob";
+  const mixerRef = useRef<HTMLDivElement>(null);
+  const mixerSize = useElementSize(mixerRef, knobMode);
+  const knobGap = mixerSize.width < 300 ? 6 : 10;
+  const knobChrome = {
+    gap: knobGap,
+    // Label, mute button, padding and border around each dial.
+    chromeHeight: channelConfigs.some((c) => c.hasMute) ? 52 : 30,
+    chromeWidth: 10,
+  };
+  const knobCols = knobColumns(mixerSize.width, mixerSize.height, channelConfigs.length, knobChrome);
+  const knobRows = Math.ceil(channelConfigs.length / knobCols);
+  const knobCellWidth = (mixerSize.width - knobGap * (knobCols - 1)) / knobCols;
+  const knobCell: React.CSSProperties = {
+    width: knobCellWidth,
+    // No taller than the dial needs; the grid centres in the leftover space.
+    height: Math.min(
+      (mixerSize.height - knobGap * (knobRows - 1)) / knobRows,
+      knobCellWidth - knobChrome.chromeWidth + knobChrome.chromeHeight,
+    ),
+  };
+
   return (
     <div className="flex flex-col h-dvh w-dvw overflow-hidden rounded-[6px] relative isolate">
       {/* Background layer — behind all content */}
@@ -240,16 +271,19 @@ export default function App() {
       {/* Glass overlay — rendered via CSS on #root > div */}
 
       <Titlebar
-        selectedA1={selectedA1}
-        a1Choices={outputs}
-        onA1Change={setSelectedA1}
+        outputs={outputs}
+        outputBus={outputBus}
+        hwBusCount={hwBusCount}
+        onOutputBusChange={saveOutputBus}
+        busStates={busStates}
+        onBusMuteToggle={setBusMute}
         onSettingsClick={() => {
           setAppsOpen(false);
           setSettingsOpen(true);
         }}
         onAppsClick={() => setAppsOpen((v) => !v)}
         appsOpen={appsOpen}
-        busGain={busGains.get(0) ?? 0}
+        busGain={busGains.get(outputBus) ?? 0}
         showOutputLevel={effectiveSettings.showOutputLevel}
         reconnecting={reconnecting}
         pinned={style.alwaysOnTop}
@@ -257,10 +291,13 @@ export default function App() {
         windowPresets={effectiveSettings.windowPresets ?? []}
       />
 
-      {/* Channel faders */}
+      {/* Channel faders or knobs */}
       <div
-        className="flex-1 flex items-stretch px-[clamp(6px,2vw,16px)] pt-[clamp(4px,1.5dvh,12px)] pb-[clamp(4px,1dvh,8px)] gap-[clamp(4px,1.5vw,16px)] min-h-0"
-        style={faderContainerStyle}
+        ref={mixerRef}
+        className={`flex-1 flex px-[clamp(6px,2vw,16px)] pt-[clamp(4px,1.5dvh,12px)] pb-[clamp(4px,1dvh,8px)] min-h-0 ${
+          knobMode ? "flex-wrap justify-center content-center" : "items-stretch gap-[clamp(4px,1.5vw,16px)]"
+        }`}
+        style={knobMode ? { gap: knobGap } : faderContainerStyle}
       >
         {loaded &&
           channelConfigs.map((ch) => {
@@ -268,8 +305,9 @@ export default function App() {
               gain: ch.defaultDb,
               muted: false,
             };
-            return (
-              <Fader
+            const Control = knobMode ? Knob : Fader;
+            const control = (
+              <Control
                 key={ch.strip}
                 label={ch.label}
                 value={state.gain}
@@ -286,6 +324,13 @@ export default function App() {
                 onDragEnd={() => stopDragging(ch.strip)}
                 defaultDb={ch.defaultDb}
               />
+            );
+            return knobMode ? (
+              <div key={ch.strip} className="flex" style={knobCell}>
+                {control}
+              </div>
+            ) : (
+              control
             );
           })}
       </div>

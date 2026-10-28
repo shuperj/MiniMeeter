@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect } from "react";
 import { motion, useTransform, useSpring } from "framer-motion";
 import { WHEEL_STEP_DB } from "../config";
 import MuteButton from "./MuteButton";
+import { useLevelMeter } from "../hooks/useLevelMeter";
 
 interface FaderProps {
   label: string;
@@ -45,56 +46,10 @@ export default function Fader({
 
   // --- Live level meter (smooth tracking, silence hold + configurable decay) ---
   const meterRef = useRef<HTMLDivElement>(null);
-  const targetLevel = useRef(0);
-  const displayLevel = useRef(0);
-  const lastSignalTime = useRef(0);
-  const rafRef = useRef<number>(0);
-  const decayRef = useRef(meterDecay);
-
-  useEffect(() => {
-    targetLevel.current = level * levelScale;
-  }, [level, levelScale]);
-
-  useEffect(() => {
-    decayRef.current = meterDecay;
-  }, [meterDecay]);
-
-  useEffect(() => {
-    let lastTime = performance.now();
-    const SIGNAL_THRESHOLD = 0.005;
-    const HOLD_MS = 200;
-    const ATTACK_SPEED = 14;
-    const RELEASE_SPEED = 10;
-
-    const animate = (now: number) => {
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-
-      const target = targetLevel.current;
-      const current = displayLevel.current;
-
-      if (target > SIGNAL_THRESHOLD) {
-        // Signal present — smooth exponential tracking
-        lastSignalTime.current = now;
-        const speed = target >= current ? ATTACK_SPEED : RELEASE_SPEED;
-        const factor = 1 - Math.exp(-speed * dt);
-        displayLevel.current = current + (target - current) * factor;
-      } else if (now - lastSignalTime.current > HOLD_MS) {
-        // Silence — creep down at configurable decay speed
-        displayLevel.current = Math.max(0, current - decayRef.current * dt);
-      }
-      // else: within hold period, keep current level
-
-      if (meterRef.current) {
-        meterRef.current.style.height = `${Math.min(displayLevel.current * 100, 100)}%`;
-      }
-
-      rafRef.current = requestAnimationFrame(animate);
-    };
-
-    rafRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafRef.current);
+  const paintMeter = useCallback((lvl: number) => {
+    if (meterRef.current) meterRef.current.style.height = `${lvl * 100}%`;
   }, []);
+  useLevelMeter(level, levelScale, meterDecay, paintMeter);
 
   // Normalized 0..1 where 0 = max dB (top) and 1 = min dB (bottom)
   const normalized = (max - value) / (max - min);

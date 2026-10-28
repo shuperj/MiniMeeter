@@ -186,7 +186,13 @@ export default function SettingsPanel({
                 />
               )}
 
-              {tab === "outputs" && <OutputsTab draft={outDraft} onChange={setOutDraft} />}
+              {tab === "outputs" && (
+                <OutputsTab
+                  draft={outDraft}
+                  onChange={setOutDraft}
+                  hwBusCount={edition.buses.filter((b) => !b.isVirtual).length}
+                />
+              )}
 
               {tab === "fx" && (
                 <FxTab

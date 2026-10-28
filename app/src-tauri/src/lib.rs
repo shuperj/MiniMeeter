@@ -74,6 +74,7 @@ pub fn run() {
             commands::vm_logout,
             commands::vm_set_gain,
             commands::vm_set_mute,
+            commands::vm_set_bus_mute,
             commands::vm_get_all_strips,
             commands::vm_set_a1_device,
             commands::vm_get_a1_device,

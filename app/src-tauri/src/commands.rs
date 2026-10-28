@@ -96,6 +96,26 @@ pub struct AllBusLevels {
     pub levels: Vec<BusLevel>,
 }
 
+/// A hardware output bus's mute and assigned device, for the titlebar picker.
+#[derive(Debug, Clone, Serialize)]
+pub struct BusState {
+    pub bus: u32,
+    pub muted: bool,
+    /// Name of the device on this bus; empty when none is assigned.
+    pub device: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AllBusStates {
+    pub buses: Vec<BusState>,
+}
+
+fn read_bus_state(api: &VoicemeeterAPI, bus: u32) -> BusState {
+    let mute_val = api.get_float(&format!("Bus[{bus}].Mute")).unwrap_or(0.0);
+    let device = api.get_string(&format!("Bus[{bus}].Device.name")).unwrap_or_default();
+    BusState { bus, muted: mute_val >= 1.0, device }
+}
+
 fn read_bus_level(api: &VoicemeeterAPI, edition: VmEdition, bus: u32) -> BusLevel {
     let (ch_l, ch_r) = edition.bus_level_channels(bus).unwrap_or((0, 1));
     let level_l = api.get_level(3, ch_l).unwrap_or(0.0);
@@ -203,6 +223,12 @@ fn spawn_poller(polling: Arc<AtomicBool>, app_handle: AppHandle) {
                                         .collect();
                                     let _ = app_handle
                                         .emit("vm:state-update", AllStripsState { strips });
+                                    // Only hardware buses take a device.
+                                    let buses: Vec<BusState> = (0..edition.hw_bus_count())
+                                        .map(|b| read_bus_state(api, b))
+                                        .collect();
+                                    let _ = app_handle
+                                        .emit("vm:bus-state", AllBusStates { buses });
                                 }
 
                                 // Always read levels (they change continuously)
@@ -287,6 +313,16 @@ pub fn vm_set_mute(state: State<VmState>, strip: u32, muted: bool) -> Result<(),
 }
 
 #[tauri::command]
+pub fn vm_set_bus_mute(state: State<VmState>, bus: u32, muted: bool) -> Result<(), String> {
+    let guard = state.api.lock().map_err(|e| e.to_string())?;
+    let api = guard.as_ref().ok_or("Not connected")?;
+    api.set_float(
+        &format!("Bus[{bus}].Mute"),
+        if muted { 1.0 } else { 0.0 },
+    )
+}
+
+#[tauri::command]
 pub fn vm_get_all_strips(state: State<VmState>) -> Result<AllStripsState, String> {
     let guard = state.api.lock().map_err(|e| e.to_string())?;
     let api = guard.as_ref().ok_or("Not connected")?;
@@ -302,15 +338,21 @@ pub fn vm_get_all_strips(state: State<VmState>) -> Result<AllStripsState, String
     Ok(AllStripsState { strips })
 }
 
+/// Assign a device to a hardware bus (A1 when `bus` is omitted).
 #[tauri::command]
 pub fn vm_set_a1_device(
     state: State<VmState>,
     driver: String,
     name: String,
+    bus: Option<u32>,
 ) -> Result<(), String> {
     let guard = state.api.lock().map_err(|e| e.to_string())?;
     let api = guard.as_ref().ok_or("Not connected")?;
-    let param = format!("Bus[0].Device.{driver}");
+    let bus = bus.unwrap_or(0);
+    if bus >= state.edition_or_default().hw_bus_count() {
+        return Err(format!("This Voicemeeter has no hardware bus A{}", bus + 1));
+    }
+    let param = format!("Bus[{bus}].Device.{driver}");
     api.set_string(&param, &name)?;
     // The assignment is inert until the audio engine restarts. Errors here are
     // reported rather than swallowed -- a silent failure looks exactly like a

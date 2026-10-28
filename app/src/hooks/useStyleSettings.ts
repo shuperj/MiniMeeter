@@ -90,6 +90,8 @@ function migrateSettings(raw: any): StyleSettings {
     s.background = migrateBackground(raw.background);
   }
 
+  if (s.channelControl !== "knob") s.channelControl = "fader";
+
   // Clean up old fields
   delete s.focused;
   delete s.unfocused;
