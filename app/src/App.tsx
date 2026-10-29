@@ -230,8 +230,8 @@ export default function App() {
   const knobGap = mixerSize.width < 300 ? 6 : 10;
   const knobChrome = {
     gap: knobGap,
-    // Label, mute button, padding and border around each dial.
-    chromeHeight: channelConfigs.some((c) => c.hasMute) ? 52 : 30,
+    // Label, dB readout, mute button, padding and border around each dial.
+    chromeHeight: channelConfigs.some((c) => c.hasMute) ? 68 : 46,
     chromeWidth: 10,
   };
   const knobCols = knobColumns(mixerSize.width, mixerSize.height, channelConfigs.length, knobChrome);

@@ -247,7 +247,7 @@ export default function StyleTab({
                 <span className="text-white/40">x</span>
                 <input
                   type="number"
-                  min="275"
+                  min="150"
                   className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(34px,8vw,52px)] text-center`}
                   value={preset.height}
                   onChange={(e) => updatePreset(idx, { height: Number(e.target.value) })}

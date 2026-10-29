@@ -206,7 +206,7 @@ export default function Fader({
           {/* Grab surface — the full column width, so you never have to hit the
               thin track or the thumb exactly. */}
           <div
-            className="relative flex-1 min-h-[80px] w-full flex justify-center touch-none cursor-grab active:cursor-grabbing"
+            className="relative flex-1 min-h-[16px] w-full flex justify-center touch-none cursor-grab active:cursor-grabbing"
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}

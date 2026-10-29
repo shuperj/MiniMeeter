@@ -28,18 +28,22 @@ const DOUBLE_CLICK_MS = 350;
 /** Arrow keys and Shift+wheel step this far; plain wheel uses WHEEL_STEP_DB like the faders. */
 const FINE_STEP_DB = 0.5;
 
-// Dial geometry, in a 100x100 viewBox that scales to whatever the cell allows.
+// Dial geometry after PlantainMeeter's knob (its 40-unit dial scaled to a
+// 100x100 viewBox, which then scales to whatever the cell allows): a gain
+// track, a level-meter ring just outside it, a needle from the hub.
 const C = 50;
-const R_METER = 46;
-const R_TRACK = 38;
-const R_BODY = 29;
+const R_TRACK = 35;
+const R_METER = 42.5;
 const SWEEP_END = KNOB_START + KNOB_SWEEP;
 const METER_D = arcPath(C, C, R_METER, KNOB_START, SWEEP_END);
 const TRACK_D = arcPath(C, C, R_TRACK, KNOB_START, SWEEP_END);
-// A notch at the rim, clear of the readout in the middle.
-const POINTER_IN = polar(C, C, 20, 0);
-const POINTER_OUT = polar(C, C, 26.5, 0);
+const R_DISH = 27.5;
+// The pointer runs from partway out to the dish's lip, leaving its hollow clear.
+const NEEDLE_IN = polar(C, C, 12, 0);
+const NEEDLE_OUT = polar(C, C, 24, 0);
 
+/** The live level, in the visualizer's colour so it reads apart from the accent gain fill. */
+const METER_COLOR = "rgb(var(--viz-r, 58), var(--viz-g, 134), var(--viz-b, 255))";
 const MUTED_RED = "rgb(239,68,68)";
 
 function formatDb(v: number): string {
@@ -80,7 +84,7 @@ export default function Knob({
     if (!el) return;
     el.style.strokeDasharray = `${lvl} 1`;
     // A zero-length dash still draws a round cap; hide it at silence.
-    el.style.opacity = lvl > 0.004 ? "0.9" : "0";
+    el.style.opacity = lvl > 0.004 ? "1" : "0";
   }, []);
   useLevelMeter(level, levelScale, meterDecay, paintMeter);
 
@@ -93,14 +97,12 @@ export default function Knob({
   }, [norm, spring]);
 
   const fillRef = useRef<SVGPathElement>(null);
-  const shineRef = useRef<SVGPathElement>(null);
   const pointerRef = useRef<SVGGElement>(null);
 
   const paintPosition = useCallback((n: number) => {
-    for (const el of [fillRef.current, shineRef.current]) {
-      if (!el) continue;
-      el.style.strokeDasharray = `${n} 1`;
-      el.style.opacity = n > 0.004 ? "1" : "0";
+    if (fillRef.current) {
+      fillRef.current.style.strokeDasharray = `${n} 1`;
+      fillRef.current.style.opacity = n > 0.004 ? "1" : "0";
     }
     pointerRef.current?.setAttribute("transform", `rotate(${normToAngle(n)} ${C} ${C})`);
   }, []);
@@ -227,14 +229,15 @@ export default function Knob({
     [max, min, onChange, stepDb],
   );
 
-  const defaultTick = polar(C, C, R_TRACK + 6.5, normToAngle(dbToNorm(clampedDefault, min, max)));
-  const ringColor = muted ? MUTED_RED : "var(--accent)";
+  // Muted shows on the card border, the mute button and the meter ring only;
+  // the dial itself keeps showing the gain as it is.
+  const meterColor = muted ? MUTED_RED : METER_COLOR;
 
   return (
     <div
       className="w-full h-full rounded-[6px] border border-solid flex flex-col items-center min-w-0 min-h-0 overflow-hidden"
       style={{
-        borderColor: muted ? "rgba(239,68,68,0.7)" : "var(--accent)",
+        borderColor: muted ? MUTED_RED : "var(--accent)",
         backgroundColor: "rgba(30, 30, 30, var(--fader-glass-tint, 0.8))",
         backdropFilter: "var(--fader-glass-filter, blur(12px) saturate(1.5))",
       }}
@@ -243,6 +246,10 @@ export default function Knob({
       <div className="flex flex-col items-center w-full h-full min-h-0 p-[clamp(3px,0.8vw,6px)] gap-[clamp(1px,0.5dvh,4px)]">
         <span className="text-[clamp(0.6rem,2.5vw,0.875rem)] font-bold text-white/90 truncate w-full text-center shrink-0 leading-tight">
           {label}
+        </span>
+
+        <span className="text-[clamp(0.55rem,2vw,0.75rem)] font-bold text-white/90 tabular-nums whitespace-nowrap shrink-0 leading-tight">
+          {formatDb(value)} dB
         </span>
 
         {/* Dial — the whole area is the grab surface, not just the drawn knob. */}
@@ -271,100 +278,73 @@ export default function Knob({
             }}
           >
             <defs>
-              <radialGradient id="knob-body" cx="40%" cy="32%" r="75%">
-                <stop offset="0%" stopColor="#4a4a4a" />
-                <stop offset="100%" stopColor="#1b1b1b" />
+              {/* A concave dish lit from above: the upper wall falls into
+                  shadow and the lower wall catches the light (a convex knob
+                  is the other way round), with a lip that does the opposite. */}
+              <linearGradient id="knob-dish" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#151515" />
+                <stop offset="55%" stopColor="#2c2c2c" />
+                <stop offset="100%" stopColor="#4a4a4a" />
+              </linearGradient>
+              <linearGradient id="knob-lip" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#6a6a6a" />
+                <stop offset="100%" stopColor="#121212" />
+              </linearGradient>
+              <radialGradient id="knob-hollow" cx="50%" cy="50%" r="50%">
+                <stop offset="70%" stopColor="#000" stopOpacity="0" />
+                <stop offset="100%" stopColor="#000" stopOpacity="0.45" />
               </radialGradient>
             </defs>
 
-            {/* Meter gutter + live level */}
-            <path d={METER_D} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" strokeLinecap="round" />
-            <path
-              ref={meterRef}
-              d={METER_D}
-              pathLength={1}
-              fill="none"
-              stroke={ringColor}
-              strokeWidth="3"
-              strokeLinecap="round"
-              style={{ strokeDasharray: "0 1", opacity: 0 }}
-            />
-
             {/* Gain track + fill */}
-            <path d={TRACK_D} fill="none" stroke="#2b2b2b" strokeWidth="7" strokeLinecap="round" />
+            <path d={TRACK_D} fill="none" stroke="#2b2b2b" strokeWidth="10" strokeLinecap="round" />
             <path
               ref={fillRef}
               d={TRACK_D}
               pathLength={1}
               fill="none"
-              stroke={ringColor}
-              strokeWidth="7"
+              stroke="var(--accent)"
+              strokeWidth="10"
               strokeLinecap="round"
+              strokeOpacity={0.5}
               style={{ strokeDasharray: "0 1", opacity: 0 }}
-              strokeOpacity={muted ? 0.5 : 0.9}
             />
-            {/* A light line along the fill, so it reads even with a dark accent */}
+
+            {/* Level-meter gutter, visible even at silence, then the live level */}
             <path
-              ref={shineRef}
-              d={TRACK_D}
+              d={METER_D}
+              fill="none"
+              stroke={muted ? "rgba(239,68,68,0.55)" : "rgba(255,255,255,0.14)"}
+              strokeWidth="5"
+              strokeLinecap="round"
+            />
+            <path
+              ref={meterRef}
+              d={METER_D}
               pathLength={1}
               fill="none"
-              stroke="white"
-              strokeWidth="1.4"
+              stroke={meterColor}
+              strokeWidth="6.25"
               strokeLinecap="round"
-              strokeOpacity={muted ? 0.2 : 0.45}
-              style={{ strokeDasharray: "0 1", opacity: 0 }}
+              style={{ strokeDasharray: "0 1", opacity: 0, filter: `drop-shadow(0 0 3px ${meterColor})` }}
             />
 
-            {/* Where double-click goes */}
-            <circle cx={defaultTick.x} cy={defaultTick.y} r="1.6" fill="rgba(255,255,255,0.75)" />
+            {/* Concave centre */}
+            <circle cx={C} cy={C} r={R_DISH} fill="url(#knob-dish)" stroke="url(#knob-lip)" strokeWidth="2" />
+            <circle cx={C} cy={C} r={R_DISH - 1} fill="url(#knob-hollow)" />
 
-            {/* Body */}
-            <circle
-              cx={C}
-              cy={C}
-              r={R_BODY}
-              fill="url(#knob-body)"
-              stroke={muted ? "rgba(239,68,68,0.8)" : "rgba(255,255,255,0.14)"}
-              strokeWidth="1.2"
-            />
-
-            {/* Pointer, drawn at 0° and rotated into place */}
+            {/* Needle, drawn at 0° and rotated into place */}
             <g ref={pointerRef}>
               <line
-                x1={POINTER_IN.x}
-                y1={POINTER_IN.y}
-                x2={POINTER_OUT.x}
-                y2={POINTER_OUT.y}
-                stroke={muted ? MUTED_RED : "white"}
-                strokeWidth="3.5"
+                x1={NEEDLE_IN.x}
+                y1={NEEDLE_IN.y}
+                x2={NEEDLE_OUT.x}
+                y2={NEEDLE_OUT.y}
+                stroke="white"
+                strokeWidth="5"
                 strokeLinecap="round"
               />
             </g>
-
-            {/* Readout, inside the knob so it costs no extra height */}
-            <text
-              x={C}
-              y={C + 3}
-              textAnchor="middle"
-              fontSize="17"
-              fontWeight="700"
-              fill={muted ? "#fca5a5" : "rgba(255,255,255,0.92)"}
-              style={{ fontVariantNumeric: "tabular-nums", pointerEvents: "none" }}
-            >
-              {formatDb(value)}
-            </text>
-            <text
-              x={C}
-              y={C + 13}
-              textAnchor="middle"
-              fontSize="8"
-              fontWeight="600"
-              fill="rgba(255,255,255,0.45)"
-              style={{ pointerEvents: "none" }}
-            >
-              dB
-            </text>
           </svg>
         </div>
 

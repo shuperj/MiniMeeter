@@ -113,7 +113,7 @@ export interface StyleSettings {
   windowPresets: WindowPreset[];
 }
 
-/** Sized against the 200x275 minimum in tauri.conf.json. */
+/** Sized against the 200x150 minimum in tauri.conf.json. */
 export const DEFAULT_WINDOW_PRESETS: WindowPreset[] = [
   { name: "Compact", width: 220, height: 300 },
   { name: "Default", width: 420, height: 340 },
