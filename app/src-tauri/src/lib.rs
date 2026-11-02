@@ -4,6 +4,7 @@ mod commands;
 mod edition;
 mod fx;
 mod hotkeys;
+mod link_health;
 mod spectrum;
 mod voicemeeter;
 

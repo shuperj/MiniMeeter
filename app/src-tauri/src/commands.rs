@@ -1,11 +1,14 @@
 use crate::accent::{get_system_accent_color, AccentColor};
 use crate::edition::{EditionInfo, VmEdition};
+use crate::link_health::{
+    write_echo_overdue, FrozenLevels, FROZEN_LEVELS_PROBE_AFTER, RELOGIN_COOLDOWN,
+};
 use crate::voicemeeter::{LoginStatus, VoicemeeterAPI};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, State};
 use crate::WindowState;
 
@@ -193,6 +196,10 @@ fn spawn_poller(polling: Arc<AtomicBool>, app_handle: AppHandle) {
     thread::spawn(move || {
         // Emit only on transitions, not every tick.
         let mut last_healthy: Option<bool> = None;
+        // Dead-link watch: see `link_health`.
+        let mut frozen = FrozenLevels::default();
+        let mut last_relogin: Option<Instant> = None;
+        let mut resync = false;
 
         while polling.load(Ordering::SeqCst) {
             let mut healthy = false;
@@ -201,15 +208,20 @@ fn spawn_poller(polling: Arc<AtomicBool>, app_handle: AppHandle) {
                 let vm_state: State<VmState> = app_handle.state();
                 // Bind the lock result before matching: an `if let` scrutinee temporary
                 // would outlive `vm_state` and fail to borrow-check.
-                let guard = vm_state.api.lock();
-                if let Ok(ref lock) = guard {
-                    if let Some(ref api) = **lock {
+                let mut guard = vm_state.api.lock();
+                if let Ok(ref mut lock) = guard {
+                    if let Some(ref mut api) = **lock {
+                        // A failed re-login leaves us logged out; keep trying.
+                        if !api.is_logged_in() {
+                            let _ = api.login();
+                        }
                         match api.is_dirty() {
                             Ok(dirty) => {
                                 healthy = true;
-                                // Resync fully when the engine comes back, otherwise the
-                                // UI keeps showing pre-restart gains.
-                                let recovered = last_healthy != Some(true);
+                                // Resync fully when the engine comes back (or the link
+                                // was revived), otherwise the UI keeps showing stale gains.
+                                let recovered =
+                                    last_healthy != Some(true) || std::mem::take(&mut resync);
                                 // Re-detect on every recovery: the user may have
                                 // quit Banana and started Potato in between.
                                 let edition = if recovered {
@@ -235,14 +247,45 @@ fn spawn_poller(polling: Arc<AtomicBool>, app_handle: AppHandle) {
                                 let levels: Vec<StripLevel> = (0..edition.strip_count())
                                     .map(|s| read_strip_level(api, edition, s))
                                     .collect();
-                                let _ = app_handle.emit("vm:levels", AllStripLevels { levels });
 
                                 // Output bus levels for every bus of this edition
                                 let bus_levels: Vec<BusLevel> = (0..edition.bus_count())
                                     .map(|b| read_bus_level(api, edition, b))
                                     .collect();
+
+                                let now = Instant::now();
+                                let readings: Vec<f32> = levels
+                                    .iter()
+                                    .flat_map(|l| [l.level, l.pre_level])
+                                    .chain(bus_levels.iter().map(|b| b.level))
+                                    .collect();
+                                if frozen
+                                    .observe(&readings, now)
+                                    .is_some_and(|d| d >= FROZEN_LEVELS_PROBE_AFTER)
+                                {
+                                    frozen.reset();
+                                    let _ = api.probe_link();
+                                }
+
+                                let _ = app_handle.emit("vm:levels", AllStripLevels { levels });
                                 let _ = app_handle
                                     .emit("vm:bus-levels", AllBusLevels { levels: bus_levels });
+
+                                let cooled_down = last_relogin
+                                    .is_none_or(|t| now.duration_since(t) >= RELOGIN_COOLDOWN);
+                                if write_echo_overdue(api.unacked_write_since(), now)
+                                    && cooled_down
+                                {
+                                    eprintln!(
+                                        "Voicemeeter link went dead (likely another client logged out); logging in again"
+                                    );
+                                    last_relogin = Some(now);
+                                    frozen.reset();
+                                    match api.relogin() {
+                                        Ok(_) => resync = true,
+                                        Err(e) => eprintln!("Voicemeeter re-login failed: {e}"),
+                                    }
+                                }
                             }
                             // IsParametersDirty returns -2 ("no server") while the engine
                             // restarts and while Voicemeeter is not running. Both are

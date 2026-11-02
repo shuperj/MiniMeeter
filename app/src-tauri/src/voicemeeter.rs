@@ -1,7 +1,9 @@
 use libloading::{Library, Symbol};
+use std::cell::Cell;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_float, c_long};
 use std::path::Path;
+use std::time::Instant;
 
 type FnLogin = unsafe extern "C" fn() -> c_long;
 type FnLogout = unsafe extern "C" fn() -> c_long;
@@ -42,6 +44,9 @@ pub struct VoicemeeterAPI {
     fn_run_voicemeeter: Option<FnRunVoicemeeter>,
     fn_get_voicemeeter_type: Option<FnGetVoicemeeterType>,
     logged_in: bool,
+    /// When the oldest write not yet echoed back as a dirty flag was made.
+    /// See `link_health` for why this exposes a dead link.
+    unacked_write: Cell<Option<Instant>>,
 }
 
 // SAFETY: VoicemeeterAPI wraps a DLL that uses thread-safe COM calls.
@@ -108,6 +113,7 @@ impl VoicemeeterAPI {
                 fn_get_voicemeeter_type,
                 _lib: lib,
                 logged_in: false,
+                unacked_write: Cell::new(None),
             })
         }
     }
@@ -183,13 +189,48 @@ impl VoicemeeterAPI {
         }
     }
 
+    pub fn is_logged_in(&self) -> bool {
+        self.logged_in
+    }
+
+    /// Logout + Login: the only way to revive a link another client's logout killed
+    /// (a second Login without the Logout is refused with -2).
+    pub fn relogin(&mut self) -> Result<LoginStatus, String> {
+        self.logout();
+        self.unacked_write.set(None);
+        self.login()
+    }
+
     pub fn is_dirty(&self) -> Result<bool, String> {
         self.require_login()?;
         let rc = unsafe { (self.fn_is_dirty)() };
         if rc < 0 {
+            // No server: writes made now are not expected to echo.
+            self.unacked_write.set(None);
             Err(format!("VBVMR_IsParametersDirty error: {rc}"))
         } else {
+            if rc == 1 {
+                self.unacked_write.set(None);
+            }
             Ok(rc == 1)
+        }
+    }
+
+    /// When the oldest write still waiting for its dirty-flag echo was made.
+    pub fn unacked_write_since(&self) -> Option<Instant> {
+        self.unacked_write.get()
+    }
+
+    /// Rewrite Strip[0].Label with its current text: changes nothing, but a live link
+    /// echoes it as a dirty flag, so it tests the link when the user is not writing.
+    pub fn probe_link(&self) -> Result<(), String> {
+        let label = self.get_string("Strip[0].Label")?;
+        self.set_string("Strip[0].Label", &label)
+    }
+
+    fn note_write(&self) {
+        if self.unacked_write.get().is_none() {
+            self.unacked_write.set(Some(Instant::now()));
         }
     }
 
@@ -198,6 +239,7 @@ impl VoicemeeterAPI {
         let param_c = CString::new(param).map_err(|e| e.to_string())?;
         let rc = unsafe { (self.fn_set_float)(param_c.as_ptr(), value) };
         if rc == 0 {
+            self.note_write();
             Ok(())
         } else {
             Err(format!("SetParameterFloat({param}, {value}) failed: {rc}"))
@@ -222,6 +264,7 @@ impl VoicemeeterAPI {
         let value_c = CString::new(value).map_err(|e| e.to_string())?;
         let rc = unsafe { (self.fn_set_string)(param_c.as_ptr(), value_c.as_ptr()) };
         if rc == 0 {
+            self.note_write();
             Ok(())
         } else {
             Err(format!("SetParameterStringA({param}, {value}) failed: {rc}"))
