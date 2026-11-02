@@ -23,8 +23,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 const VOLUME_STEP_DB: f32 = 2.0;
-/// Bus gain the volume keys stop at. Voicemeeter's faders go lower, but this is
-/// already silent and leaves a usable climb back up.
+/// Where the quietest bus stops the volume keys. Voicemeeter's faders go lower,
+/// but this is already silent and leaves a usable climb back up.
 const VOLUME_MIN_DB: f32 = -60.0;
 /// The top of Voicemeeter's bus faders.
 const VOLUME_MAX_DB: f32 = 12.0;
@@ -98,12 +98,17 @@ fn dispatch(app: &AppHandle, action: HotkeyAction) {
 }
 
 /// New gains for one volume key step. Every bus moves by the same amount so
-/// their balance survives; going up, that amount stops when the loudest bus
-/// reaches the ceiling.
+/// their balance survives: going up, that amount stops when the loudest bus
+/// reaches the ceiling, and going down, when the quietest reaches the floor.
 fn stepped_gains(gains: &[f32], delta: f32) -> Vec<f32> {
     let loudest = gains.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let shift = if delta > 0.0 { delta.min((VOLUME_MAX_DB - loudest).max(0.0)) } else { delta };
-    gains.iter().map(|g| (g + shift).max(VOLUME_MIN_DB)).collect()
+    let quietest = gains.iter().copied().fold(f32::INFINITY, f32::min);
+    let shift = if delta > 0.0 {
+        delta.min((VOLUME_MAX_DB - loudest).max(0.0))
+    } else {
+        delta.max((VOLUME_MIN_DB - quietest).min(0.0))
+    };
+    gains.iter().map(|g| g + shift).collect()
 }
 
 /// What the mute key should do, as the buses to change and the mute value to
@@ -290,8 +295,27 @@ mod tests {
     }
 
     #[test]
-    fn volume_down_stops_each_bus_at_the_floor() {
-        assert_eq!(stepped_gains(&[-59.0, -10.0], -2.0), vec![-60.0, -12.0]);
+    fn volume_down_stops_when_the_quietest_bus_reaches_the_floor() {
+        assert_eq!(stepped_gains(&[-59.0, -10.0], -2.0), vec![-60.0, -11.0]);
+        assert_eq!(stepped_gains(&[-60.0, -10.0], -2.0), vec![-60.0, -10.0]);
+    }
+
+    #[test]
+    fn holding_down_then_up_keeps_the_balance() {
+        let mut gains = vec![-12.0, 0.0];
+        for _ in 0..40 {
+            gains = stepped_gains(&gains, -VOLUME_STEP_DB);
+        }
+        assert_eq!(gains, vec![-60.0, -48.0]);
+        for _ in 0..12 {
+            gains = stepped_gains(&gains, VOLUME_STEP_DB);
+        }
+        assert_eq!(gains, vec![-36.0, -24.0]);
+    }
+
+    #[test]
+    fn a_bus_already_below_the_floor_does_not_jump_up() {
+        assert_eq!(stepped_gains(&[-70.0, -10.0], -2.0), vec![-70.0, -10.0]);
     }
 
     #[test]
