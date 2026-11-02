@@ -53,9 +53,8 @@ const TERRAIN_PATTERN_OPTIONS: { value: TerrainPattern; label: string }[] = [
   { value: "splinter", label: "Splinter" },
 ];
 
-/** The rows of the Background settings group (mode, then the mode's own
- *  options). Renders no heading or box; the caller supplies the group. */
-export default function WindowStateStyleEditor({ draft, onChange, smallText, inputCls }: WindowStateStyleEditorProps) {
+/** Mode, and what it most needs: shown even while the group is collapsed. */
+export function BackgroundBasics({ draft, onChange, smallText, inputCls }: WindowStateStyleEditorProps) {
   const selectCls = `${inputCls} ${smallText} px-[clamp(2px,0.3vw,4px)] py-[2px] cursor-pointer max-w-full`;
   const update = (patch: Partial<BackgroundStyle>) => {
     onChange({ ...draft, ...patch });
@@ -67,7 +66,6 @@ export default function WindowStateStyleEditor({ draft, onChange, smallText, inp
         <Segmented options={BG_MODES} value={draft.backgroundMode} onChange={(backgroundMode) => update({ backgroundMode })} />
       </SettingRow>
 
-      {/* Solid color picker + opacity */}
       {draft.backgroundMode === "solid" && (
         <>
           <SettingRow label="Color">
@@ -79,22 +77,9 @@ export default function WindowStateStyleEditor({ draft, onChange, smallText, inp
             />
             <span className="tabular-nums">{draft.backgroundColor}</span>
           </SettingRow>
-          <SettingRow label="Opacity">
-            <input
-              type="range"
-              min="0.05"
-              max="1"
-              step="0.05"
-              value={draft.backgroundOpacity}
-              onChange={(e) => update({ backgroundOpacity: Number(e.target.value) })}
-              className={sliderCls}
-            />
-            <span className={sliderValueCls}>{Math.round(draft.backgroundOpacity * 100)}%</span>
-          </SettingRow>
         </>
       )}
 
-      {/* Visualizer settings: the basics, then an Advanced toggle */}
       {draft.backgroundMode === "visualizer" && (
         <>
           <SettingRow label="Preset" title="Each preset keeps its own strength, reactivity, speed, filters and colours.">
@@ -113,25 +98,6 @@ export default function WindowStateStyleEditor({ draft, onChange, smallText, inp
               ))}
             </select>
           </SettingRow>
-
-          {draft.visualizerPreset === "terrain" && (
-            <>
-              <SettingRow label="Material" title="Paper is a matte contour map; Flooded fills the valleys with water that recedes as the music gets louder.">
-                <Segmented
-                  options={TERRAIN_MATERIAL_OPTIONS}
-                  value={draft.terrainMaterial}
-                  onChange={(terrainMaterial) => update({ terrainMaterial })}
-                />
-              </SettingRow>
-              <SettingRow label="Pattern" title="Plain colours the land by height; Splinter paints it in an angular camouflage of the palette's colours.">
-                <Segmented
-                  options={TERRAIN_PATTERN_OPTIONS}
-                  value={draft.terrainPattern}
-                  onChange={(terrainPattern) => update({ terrainPattern })}
-                />
-              </SettingRow>
-            </>
-          )}
 
           <SettingRow
             label="Colors"
@@ -168,7 +134,7 @@ export default function WindowStateStyleEditor({ draft, onChange, smallText, inp
                     />
                     {draft.visualizerPalette.length > PALETTE_MIN && (
                       <button
-                        className="text-white/40 hover:text-white/70 bg-transparent border-none cursor-pointer p-0 pl-[2px] text-[clamp(0.5rem,1.2vw,0.6rem)]"
+                        className="text-white/60 hover:text-white/70 bg-transparent border-none cursor-pointer p-0 pl-[2px] text-[clamp(0.5rem,1.2vw,0.6rem)]"
                         onClick={() =>
                           update({ visualizerPalette: draft.visualizerPalette.filter((_, j) => j !== i) })
                         }
@@ -199,6 +165,58 @@ export default function WindowStateStyleEditor({ draft, onChange, smallText, inp
               </>
             )}
           </SettingRow>
+        </>
+      )}
+    </>
+  );
+}
+
+/** The mode's remaining options, shown when the group is open. */
+export function BackgroundDetails({ draft, onChange, smallText, inputCls }: WindowStateStyleEditorProps) {
+  const selectCls = `${inputCls} ${smallText} px-[clamp(2px,0.3vw,4px)] py-[2px] cursor-pointer max-w-full`;
+  const update = (patch: Partial<BackgroundStyle>) => {
+    onChange({ ...draft, ...patch });
+  };
+
+  return (
+    <>
+      {draft.backgroundMode === "solid" && (
+        <>
+          <SettingRow label="Opacity">
+            <input
+              type="range"
+              min="0.05"
+              max="1"
+              step="0.05"
+              value={draft.backgroundOpacity}
+              onChange={(e) => update({ backgroundOpacity: Number(e.target.value) })}
+              className={sliderCls}
+            />
+            <span className={sliderValueCls}>{Math.round(draft.backgroundOpacity * 100)}%</span>
+          </SettingRow>
+        </>
+      )}
+
+      {draft.backgroundMode === "visualizer" && (
+        <>
+          {draft.visualizerPreset === "terrain" && (
+            <>
+              <SettingRow label="Material" title="Paper is a matte contour map; Flooded fills the valleys with water that recedes as the music gets louder.">
+                <Segmented
+                  options={TERRAIN_MATERIAL_OPTIONS}
+                  value={draft.terrainMaterial}
+                  onChange={(terrainMaterial) => update({ terrainMaterial })}
+                />
+              </SettingRow>
+              <SettingRow label="Pattern" title="Plain colours the land by height; Splinter paints it in an angular camouflage of the palette's colours.">
+                <Segmented
+                  options={TERRAIN_PATTERN_OPTIONS}
+                  value={draft.terrainPattern}
+                  onChange={(terrainPattern) => update({ terrainPattern })}
+                />
+              </SettingRow>
+            </>
+          )}
 
           <SettingRow label="Strength" title="How strongly the visualizer shows through (its opacity)">
             <input

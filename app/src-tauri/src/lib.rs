@@ -29,6 +29,8 @@ pub fn run() {
                 .with_handler(|app, shortcut, event| {
                     if event.state == ShortcutState::Pressed {
                         hotkeys::handle_shortcut(app, &shortcut.to_string());
+                    } else {
+                        hotkeys::stop_volume_repeat(app);
                     }
                 })
                 .build(),
@@ -67,6 +69,20 @@ pub fn run() {
                 let _ = apply_acrylic(&window, Some((10, 10, 10, 255)));
             }
 
+            // Autostart stores this exe's path, which goes stale when the app
+            // moves. Re-register so an existing entry always starts this copy.
+            // Release only: a dev build must never become what Windows launches.
+            #[cfg(not(debug_assertions))]
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let autostart = app.autolaunch();
+                if autostart.is_enabled().unwrap_or(false) {
+                    if let Err(e) = autostart.enable() {
+                        eprintln!("Failed to refresh the startup entry: {e}");
+                    }
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -83,9 +99,9 @@ pub fn run() {
             commands::vm_list_installed_editions,
             commands::vm_get_edition,
             commands::vm_list_output_devices,
+            commands::vm_set_bus_gain,
             commands::get_accent_color,
             commands::set_acrylic,
-            commands::set_window_opacity,
             hotkeys::vm_sync_shortcuts,
             fx::vm_sync_fx_groups,
             fx::vm_toggle_fx_group,

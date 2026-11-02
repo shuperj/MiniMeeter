@@ -81,3 +81,14 @@ fn modifier_order_normalizes() {
     let b = Shortcut::from_str("Shift+CmdOrCtrl+Numpad3").expect("should parse");
     assert_eq!(a.to_string(), b.to_string());
 }
+
+/// The settings' volume keys option binds these exact strings.
+#[test]
+fn volume_key_accelerators_parse() {
+    for case in ["AudioVolumeUp", "AudioVolumeDown", "AudioVolumeMute"] {
+        assert!(
+            Shortcut::from_str(case).is_ok(),
+            "expected `{case}` to parse as a shortcut"
+        );
+    }
+}

@@ -20,7 +20,10 @@ export interface FxStatePayload {
 /** One entry for `vm_sync_shortcuts`. Mirrors `HotkeyBinding` in hotkeys.rs. */
 export type HotkeyAction =
   | { type: "toggleMute"; strip: number }
-  | { type: "toggleFxGroup"; id: string };
+  | { type: "toggleFxGroup"; id: string }
+  | { type: "volumeUp" }
+  | { type: "volumeDown" }
+  | { type: "muteOutputs" };
 
 export interface HotkeyBinding {
   hotkey: string;

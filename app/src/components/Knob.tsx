@@ -13,10 +13,7 @@ interface KnobProps {
   hasMute: boolean;
   muted: boolean;
   level: number;
-  levelScale: number;
   meterDecay: number;
-  /** Value this knob snaps to on double-click. */
-  defaultDb: number;
   onChange: (value: number) => void;
   onMuteToggle: (muted: boolean) => void;
   onDragStart: () => void;
@@ -54,7 +51,7 @@ function formatDb(v: number): string {
 
 /**
  * A rotary alternative to Fader with the same behaviour: drag, wheel,
- * double-click to the channel default, mute, live meter. Unlike a fixed-size
+ * double-click to unity, mute, live meter. Unlike a fixed-size
  * dial it fills whatever cell App's grid gives it, so knobs grow with the
  * window instead of floating in empty space.
  */
@@ -66,9 +63,7 @@ export default function Knob({
   hasMute,
   muted,
   level,
-  levelScale,
   meterDecay,
-  defaultDb,
   onChange,
   onMuteToggle,
   onDragStart,
@@ -86,7 +81,7 @@ export default function Knob({
     // A zero-length dash still draws a round cap; hide it at silence.
     el.style.opacity = lvl > 0.004 ? "1" : "0";
   }, []);
-  useLevelMeter(level, levelScale, meterDecay, paintMeter);
+  useLevelMeter(level, meterDecay, paintMeter);
 
   // --- Position: 0..1 from the minimum, spring-smoothed for external changes ---
   const norm = dbToNorm(value, min, max);
@@ -137,8 +132,6 @@ export default function Knob({
   const lastPressTime = useRef(0);
   const movedDuringDrag = useRef(false);
 
-  const clampedDefault = Math.max(min, Math.min(max, defaultDb));
-
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -149,7 +142,7 @@ export default function Knob({
       if (isDoubleClick) {
         // Timing-based for the same reason as Fader: preventDefault below
         // suppresses the events that would make a dblclick.
-        applyNorm(dbToNorm(clampedDefault, min, max));
+        applyNorm(dbToNorm(0, min, max));
         return;
       }
 
@@ -162,7 +155,7 @@ export default function Knob({
       setActive(true);
       onDragStart();
     },
-    [applyNorm, clampedDefault, max, min, onDragStart, spring],
+    [applyNorm, max, min, onDragStart, spring],
   );
 
   const handlePointerMove = useCallback(
@@ -267,7 +260,7 @@ export default function Knob({
           aria-valuemax={max}
           aria-valuenow={value}
           aria-valuetext={`${formatDb(value)} dB`}
-          title={`Drag or scroll to adjust · Shift for fine · Double-click for ${formatDb(clampedDefault)} dB`}
+          title={`Drag or scroll to adjust · Shift for fine · Double-click for ${formatDb(0)} dB`}
         >
           <svg
             viewBox="0 0 100 100"

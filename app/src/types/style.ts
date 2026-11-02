@@ -104,11 +104,8 @@ export interface StyleSettings {
    */
   faderGlass: number;
   background: BackgroundStyle;
-  showOutputLevel: boolean;
   /** Keep the window above other windows. Toggled by the titlebar pin. */
   alwaysOnTop: boolean;
-  /** Opacity of the entire window, chrome and backdrop included (0.2 - 1). */
-  globalOpacity: number;
   /** Named window sizes, reachable by right-clicking the minimize button. */
   windowPresets: WindowPreset[];
 }
@@ -149,8 +146,6 @@ export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   faderColumnWidth: 0,
   faderGlass: 1,
   background: { ...DEFAULT_BACKGROUND_STYLE },
-  showOutputLevel: false,
   alwaysOnTop: false,
-  globalOpacity: 1,
   windowPresets: [...DEFAULT_WINDOW_PRESETS],
 };

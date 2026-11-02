@@ -7,6 +7,7 @@ const CHANNELS_KEY = "channels";
 const OUTPUTS_KEY = "outputs";
 const METER_DECAY_KEY = "meterDecay";
 const OUTPUT_BUS_KEY = "outputBus";
+const SYSTEM_KEYS_KEY = "systemKeys";
 
 export function useChannelConfig() {
   const [channels, setChannels] = useState<ChannelConfig[]>(DEFAULT_CHANNELS);
@@ -14,6 +15,8 @@ export function useChannelConfig() {
   const [meterDecay, setMeterDecay] = useState(DEFAULT_METER_DECAY);
   // The hardware bus the titlebar picker shows and switches (0 = A1).
   const [outputBus, setOutputBus] = useState(0);
+  // Whether MiniMeeter handles the keyboard's volume and mute keys.
+  const [systemKeys, setSystemKeys] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [needsOutputSetup, setNeedsOutputSetup] = useState(false);
 
@@ -40,6 +43,10 @@ export function useChannelConfig() {
         const savedBus = await store.get<number>(OUTPUT_BUS_KEY);
         if (!cancelled && savedBus != null) {
           setOutputBus(savedBus);
+        }
+        const savedKeys = await store.get<boolean>(SYSTEM_KEYS_KEY);
+        if (!cancelled && savedKeys != null) {
+          setSystemKeys(savedKeys);
         }
       } catch {
         // First run or corrupt store — use defaults
@@ -90,5 +97,15 @@ export function useChannelConfig() {
     }
   }, []);
 
-  return { channels, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, outputBus, saveOutputBus, loaded, needsOutputSetup, setNeedsOutputSetup };
+  const saveSystemKeys = useCallback(async (next: boolean) => {
+    setSystemKeys(next);
+    try {
+      const store = await load("settings.json", { defaults: {}, autoSave: true });
+      await store.set(SYSTEM_KEYS_KEY, next);
+    } catch {
+      // Non-critical
+    }
+  }, []);
+
+  return { channels, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, outputBus, saveOutputBus, systemKeys, saveSystemKeys, loaded, needsOutputSetup, setNeedsOutputSetup };
 }

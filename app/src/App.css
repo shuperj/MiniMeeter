@@ -3,6 +3,8 @@
 :root {
   --accent: #3a86ff;
   --accent-fg: #ffffff;
+  --accent-ui: #3a86ff;
+  --accent-ui-fg: #ffffff;
   --accent-r: 58;
   --accent-g: 134;
   --accent-b: 255;

@@ -98,7 +98,7 @@ export default function ConnectionOverlay({
 
         {isError && (
           <>
-            <p className="text-white/60 text-[clamp(0.5rem,1.5vw,0.7rem)] m-0">{error}</p>
+            <p className="text-white/60 text-[clamp(0.5rem,1.5vw,0.7rem)] m-0 select-text">{error}</p>
             <p className="text-white/40 text-[clamp(0.45rem,1.3vw,0.6rem)] m-0">
               Retrying automatically…
             </p>

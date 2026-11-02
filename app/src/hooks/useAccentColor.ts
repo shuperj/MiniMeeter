@@ -84,4 +84,9 @@ function applyToCSS(color: AccentColor) {
   root.style.setProperty("--accent-glow-r", String(gr));
   root.style.setProperty("--accent-glow-g", String(gg));
   root.style.setProperty("--accent-glow-b", String(gb));
+
+  // Settings controls need the same lift, and a foreground to match it.
+  const uiLum = 0.2126 * gr + 0.7152 * gg + 0.0722 * gb;
+  root.style.setProperty("--accent-ui", `rgb(${gr}, ${gg}, ${gb})`);
+  root.style.setProperty("--accent-ui-fg", uiLum > 150 ? "#000000" : "#ffffff");
 }

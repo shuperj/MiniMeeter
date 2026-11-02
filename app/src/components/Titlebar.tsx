@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, type CSSProperties, type RefObject } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import type { A1Device } from "../config";
 import type { WindowPreset } from "../types/style";
 import type { BusStatus } from "../hooks/useVoicemeeter";
+import { useDismiss } from "../hooks/useDismiss";
 import { activeOutputIndex, busLabel, outputsForBus } from "../lib/outputs";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -22,7 +23,8 @@ interface TitlebarProps {
   onAppsClick: () => void;
   appsOpen: boolean;
   busGain: number;
-  showOutputLevel: boolean;
+  /** Double-clicking the gain readout: back to 0 dB. */
+  onBusGainReset: () => void;
   /** Engine is temporarily unreachable (restarting after a device switch, etc.) */
   reconnecting?: boolean;
   pinned: boolean;
@@ -49,27 +51,6 @@ function formatDb(v: number): string {
   return `${sign}${String(Math.abs(rounded)).padStart(2, "0")}dB`;
 }
 
-/** Close a popup menu on an outside click or Escape. */
-function useDismiss(open: boolean, ref: RefObject<HTMLElement | null>, close: () => void) {
-  const closeRef = useRef(close);
-  closeRef.current = close;
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) closeRef.current();
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeRef.current();
-    };
-    window.addEventListener("mousedown", onPointerDown, true);
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      window.removeEventListener("mousedown", onPointerDown, true);
-      window.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [open, ref]);
-}
-
 function SpeakerIcon({ muted, className }: { muted: boolean; className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -82,7 +63,7 @@ function SpeakerIcon({ muted, className }: { muted: boolean; className?: string 
   );
 }
 
-export default function Titlebar({ outputs, outputBus, hwBusCount, onOutputBusChange, busStates, onBusMuteToggle, onSettingsClick, onAppsClick, appsOpen, busGain, showOutputLevel, reconnecting, pinned, onPinToggle, windowPresets }: TitlebarProps) {
+export default function Titlebar({ outputs, outputBus, hwBusCount, onOutputBusChange, busStates, onBusMuteToggle, onSettingsClick, onAppsClick, appsOpen, busGain, onBusGainReset, reconnecting, pinned, onPinToggle, windowPresets }: TitlebarProps) {
   const appWindow = getCurrentWindow();
   const [switching, setSwitching] = useState(false);
   const [switchError, setSwitchError] = useState<string | null>(null);
@@ -250,15 +231,14 @@ export default function Titlebar({ outputs, outputBus, hwBusCount, onOutputBusCh
       )}
 
       {/* Output gain readout */}
-      {showOutputLevel && (
-        <span
-          className="text-[clamp(0.5rem,1.6vw,0.65rem)] font-bold tabular-nums whitespace-nowrap mr-[clamp(3px,0.8vw,6px)] hidden min-[260px]:block shrink-0"
-          style={{ color: "var(--titlebar-fg)", opacity: 0.8 }}
-          title={`${label} output gain`}
-        >
-          {formatDb(busGain)}
-        </span>
-      )}
+      <span
+        className="text-[clamp(0.5rem,1.6vw,0.65rem)] font-bold tabular-nums whitespace-nowrap mr-[clamp(3px,0.8vw,6px)] shrink-0 cursor-pointer"
+        style={{ color: "var(--titlebar-fg)", opacity: 0.8 }}
+        title={`${label} output gain. Double-click for 0 dB.`}
+        onDoubleClick={onBusGainReset}
+      >
+        {formatDb(busGain)}
+      </span>
 
       {/* Output picker — mute toggle, bus, device. Right-click to pick the bus.
           The one part of the bar that gives way when the window is narrow. */}

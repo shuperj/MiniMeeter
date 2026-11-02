@@ -156,6 +156,12 @@ pub fn display_name(raw: &str, process: &str, system_sounds: bool) -> String {
     "Unknown app".to_string()
 }
 
+/// MiniMeeter's own sessions, from the spectrum's loopback capture. They aren't
+/// playing anything, so they don't belong in a list of apps.
+pub fn is_own_session(process: &str) -> bool {
+    process.eq_ignore_ascii_case("minimeeter")
+}
+
 /// "C:\Apps\Spotify\Spotify.exe" -> "Spotify".
 pub fn exe_stem(path: &str) -> String {
     let file = path.rsplit(['\\', '/']).next().unwrap_or(path);
@@ -516,6 +522,9 @@ mod worker {
                             }
                         };
                         let process = proc_info.name;
+                        if is_own_session(&process) {
+                            continue;
+                        }
 
                         let Ok(volume) = control.cast::<ISimpleAudioVolume>() else { continue };
                         let Ok(meter) = control.cast::<IAudioMeterInformation>() else { continue };
@@ -724,6 +733,14 @@ mod tests {
         assert_eq!(display_name("@%SystemRoot%\\System32\\AudioSrv.Dll,-202", "svchost", false), "svchost");
         assert_eq!(display_name("", "", false), "Unknown app");
         assert_eq!(display_name("whatever", "x", true), "System sounds");
+    }
+
+    #[test]
+    fn own_sessions_are_recognised_by_exe_name() {
+        assert!(is_own_session("minimeeter"));
+        assert!(is_own_session("MiniMeeter"));
+        assert!(!is_own_session("Spotify"));
+        assert!(!is_own_session(""));
     }
 
     #[test]

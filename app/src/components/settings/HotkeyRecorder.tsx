@@ -107,7 +107,7 @@ export default function HotkeyRecorder({ value, onChange }: HotkeyRecorderProps)
       )}
       {(value || pending.length > 0) && (
         <button
-          className="text-white/40 hover:text-white/70 bg-transparent border-none cursor-pointer text-[clamp(0.5rem,1.2vw,0.6rem)] p-0"
+          className="text-white/60 hover:text-white/70 bg-transparent border-none cursor-pointer text-[clamp(0.5rem,1.2vw,0.6rem)] p-0"
           onClick={clear}
           title="Clear hotkey"
         >

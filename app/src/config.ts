@@ -2,11 +2,6 @@ export interface ChannelConfig {
   label: string;
   strip: number;
   hasMute: boolean;
-  minDb: number;
-  maxDb: number;
-  defaultDb: number;
-  /** Multiplier for level meter display (default 1) */
-  levelScale?: number;
   /** Global hotkey to toggle mute (Tauri accelerator format, e.g. "CmdOrCtrl+Shift+M") */
   muteHotkey?: string;
 }
@@ -19,11 +14,15 @@ export interface A1Device {
   bus?: number;
 }
 
+/** Every channel's travel: the full range of Voicemeeter's strip faders. */
+export const CHANNEL_MIN_DB = -60;
+export const CHANNEL_MAX_DB = 12;
+
 export const DEFAULT_CHANNELS: ChannelConfig[] = [
-  { label: "Mic", strip: 0, hasMute: true, minDb: -30, maxDb: 9, defaultDb: 3 },
-  { label: "VC", strip: 1, hasMute: false, minDb: -36, maxDb: 12, defaultDb: -6 },
-  { label: "General", strip: 3, hasMute: false, minDb: -36, maxDb: 3, defaultDb: -12 },
-  { label: "Music", strip: 4, hasMute: false, minDb: -45, maxDb: 3, defaultDb: -12 },
+  { label: "Mic", strip: 0, hasMute: true },
+  { label: "VC", strip: 1, hasMute: false },
+  { label: "General", strip: 3, hasMute: false },
+  { label: "Music", strip: 4, hasMute: false },
 ];
 
 /** Kept for backwards compat — points to defaults */

@@ -7,8 +7,8 @@ import {
 } from "@tauri-apps/plugin-autostart";
 import type { AccentSource, ChannelControl, StyleSettings, WindowPreset } from "../../types/style";
 import { DEFAULT_STYLE_SETTINGS } from "../../types/style";
-import WindowStateStyleEditor from "./WindowStateStyleEditor";
-import SettingsGroup, { SettingRow, Segmented } from "./SettingsGroup";
+import { BackgroundBasics, BackgroundDetails } from "./WindowStateStyleEditor";
+import SettingsGroup, { Chip, SettingRow, Segmented } from "./SettingsGroup";
 import { sectionCls, sliderCls, sliderValueCls, swatchCls } from "./shared";
 
 interface StyleTabProps {
@@ -16,6 +16,8 @@ interface StyleTabProps {
   onChange: (next: StyleSettings) => void;
   meterDecay: number;
   onMeterDecayChange: (decay: number) => void;
+  previewOpen: boolean;
+  onPreviewToggle: () => void;
   smallText: string;
   medText: string;
   inputCls: string;
@@ -39,6 +41,8 @@ export default function StyleTab({
   onChange,
   meterDecay,
   onMeterDecayChange,
+  previewOpen,
+  onPreviewToggle,
   smallText,
   inputCls,
 }: StyleTabProps) {
@@ -49,16 +53,19 @@ export default function StyleTab({
   // Launch-on-startup is an OS registration, not a saved setting, so it
   // applies immediately rather than on Save.
   const [autostartEnabled, setAutostartEnabled] = useState(false);
+  const [autostartError, setAutostartError] = useState<string | null>(null);
   useEffect(() => {
     autostartIsEnabled().then(setAutostartEnabled).catch(() => setAutostartEnabled(false));
   }, []);
   const handleAutostartToggle = async (checked: boolean) => {
     setAutostartEnabled(checked);
+    setAutostartError(null);
     try {
       if (checked) await autostartEnable();
       else await autostartDisable();
-    } catch {
+    } catch (e) {
       setAutostartEnabled(!checked);
+      setAutostartError(String(e));
     }
   };
 
@@ -94,6 +101,31 @@ export default function StyleTab({
 
   return (
     <div className="flex flex-col gap-[clamp(6px,1.2dvh,10px)]">
+      {/* A dev build can't change this: Windows would be left launching it. */}
+      <div className={sectionCls}>
+        <SettingRow
+          label="Startup"
+          hint={
+            autostartError
+              ? `Couldn't change this: ${autostartError}`
+              : import.meta.env.DEV
+                ? "Only the installed app can change this."
+                : undefined
+          }
+        >
+          <label className={checkboxLabelCls}>
+            <input
+              type="checkbox"
+              checked={autostartEnabled}
+              disabled={import.meta.env.DEV}
+              onChange={(e) => handleAutostartToggle(e.target.checked)}
+              className={checkboxCls}
+            />
+            Launch on startup
+          </label>
+        </SettingRow>
+      </div>
+
       {/* Accent color — always visible, it tints everything below */}
       <div className={sectionCls}>
         <SettingRow label="Accent color">
@@ -116,27 +148,45 @@ export default function StyleTab({
         </SettingRow>
       </div>
 
-      <SettingsGroup title="Background" defaultOpen storageKey="minimeeter.styleTab.background.open">
-        <WindowStateStyleEditor
-          draft={draft.background}
-          onChange={(background) => update({ background })}
-          smallText={smallText}
-          inputCls={inputCls}
-        />
+      <SettingsGroup
+        title="Background"
+        defaultOpen
+        storageKey="minimeeter.styleTab.background.open"
+        headerControls={
+          draft.background.backgroundMode === "visualizer" && (
+            <Chip label="Preview" on={previewOpen} onClick={onPreviewToggle} />
+          )
+        }
+        pinned={
+          <BackgroundBasics
+            draft={draft.background}
+            onChange={(background) => update({ background })}
+            smallText={smallText}
+            inputCls={inputCls}
+          />
+        }
+      >
+        {draft.background.backgroundMode !== "acrylic" && (
+          <BackgroundDetails
+            draft={draft.background}
+            onChange={(background) => update({ background })}
+            smallText={smallText}
+            inputCls={inputCls}
+          />
+        )}
       </SettingsGroup>
 
-      <SettingsGroup title="Faders" storageKey="minimeeter.styleTab.faders.open">
-        <SettingRow
-          label="Controls"
-          hint="Knobs grow to fill the window and wrap into rows when that makes them bigger. Drag up or right to turn up, hold Shift for fine steps."
-        >
+      <SettingsGroup
+        title="Controls"
+        storageKey="minimeeter.styleTab.faders.open"
+        headerControls={
           <Segmented
             options={CHANNEL_CONTROLS}
             value={draft.channelControl}
             onChange={(channelControl) => update({ channelControl })}
           />
-        </SettingRow>
-
+        }
+      >
         {draft.channelControl === "fader" && <SettingRow label="Width">
           <label className={checkboxLabelCls}>
             <input
@@ -165,7 +215,7 @@ export default function StyleTab({
 
         <SettingRow
           label="Glass"
-          hint="Frosted glass behind the faders. Lower it to let the background show through more clearly."
+          hint="Frosted glass behind each channel. Lower it to let the background show through more clearly."
         >
           <input
             type="range"
@@ -198,35 +248,6 @@ export default function StyleTab({
       </SettingsGroup>
 
       <SettingsGroup title="Window" storageKey="minimeeter.styleTab.window.open">
-        <SettingRow
-          label="Opacity"
-          hint="Fades the whole window. The visualizer slider only affects the animation."
-        >
-          <input
-            type="range"
-            min="0.2"
-            max="1"
-            step="0.01"
-            value={draft.globalOpacity ?? 1}
-            onChange={(e) => update({ globalOpacity: Number(e.target.value) })}
-            onDoubleClick={() => update({ globalOpacity: 1 })}
-            className={sliderCls}
-          />
-          <span className={sliderValueCls}>{Math.round((draft.globalOpacity ?? 1) * 100)}%</span>
-        </SettingRow>
-
-        <SettingRow label="Titlebar">
-          <label className={checkboxLabelCls}>
-            <input
-              type="checkbox"
-              checked={draft.showOutputLevel}
-              onChange={(e) => update({ showOutputLevel: e.target.checked })}
-              className={checkboxCls}
-            />
-            Show output level
-          </label>
-        </SettingRow>
-
         <SettingRow label="Sizes" alignTop hint="Right-click the minimize button to switch between these.">
           <div className="w-full flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
             {presets.map((preset, idx) => (
@@ -240,15 +261,15 @@ export default function StyleTab({
                 <input
                   type="number"
                   min="200"
-                  className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(34px,8vw,52px)] text-center`}
+                  className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(46px,11vw,60px)] text-center`}
                   value={preset.width}
                   onChange={(e) => updatePreset(idx, { width: Number(e.target.value) })}
                 />
-                <span className="text-white/40">x</span>
+                <span className="text-white/60">x</span>
                 <input
                   type="number"
                   min="150"
-                  className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(34px,8vw,52px)] text-center`}
+                  className={`${inputCls} ${smallText} px-1 py-[1px] w-[clamp(46px,11vw,60px)] text-center`}
                   value={preset.height}
                   onChange={(e) => updatePreset(idx, { height: Number(e.target.value) })}
                 />
@@ -277,22 +298,11 @@ export default function StyleTab({
           </div>
         </SettingRow>
 
-        <SettingRow label="Startup">
-          <label className={checkboxLabelCls}>
-            <input
-              type="checkbox"
-              checked={autostartEnabled}
-              onChange={(e) => handleAutostartToggle(e.target.checked)}
-              className={checkboxCls}
-            />
-            Launch on startup
-          </label>
-        </SettingRow>
       </SettingsGroup>
 
       {/* Reset */}
       <button
-        className={`${smallText} text-white/40 hover:text-white/70 bg-transparent border border-white/10 hover:border-white/20 rounded-[3px] py-[clamp(2px,0.4dvh,4px)] cursor-pointer shrink-0`}
+        className={`${smallText} text-white/60 hover:text-white/70 bg-transparent border border-white/10 hover:border-white/20 rounded-[3px] py-[clamp(2px,0.4dvh,4px)] cursor-pointer shrink-0`}
         onClick={() => onChange({ ...DEFAULT_STYLE_SETTINGS })}
       >
         Reset to defaults

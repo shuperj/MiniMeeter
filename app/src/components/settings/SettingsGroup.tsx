@@ -26,7 +26,12 @@ interface SettingsGroupProps {
   defaultOpen?: boolean;
   /** localStorage key that remembers whether the group was left open. */
   storageKey?: string;
-  children: ReactNode;
+  /** Controls shown in the header, reachable while the group is collapsed. */
+  headerControls?: ReactNode;
+  /** Rows that stay visible while the group is collapsed. */
+  pinned?: ReactNode;
+  /** Rows the header shows and hides. With none, the header can't collapse. */
+  children?: ReactNode;
 }
 
 /** Open/closed state that's remembered across sessions under `storageKey`. */
@@ -41,24 +46,28 @@ export function useRememberedOpen(storageKey: string | undefined, defaultOpen: b
 }
 
 /** A collapsible box of setting rows with a ▸/▾ header. */
-export default function SettingsGroup({ title, defaultOpen = false, storageKey, children }: SettingsGroupProps) {
+export default function SettingsGroup({ title, defaultOpen = false, storageKey, headerControls, pinned, children }: SettingsGroupProps) {
   const [open, toggle] = useRememberedOpen(storageKey, defaultOpen);
 
   return (
     <div className="bg-white/5 rounded-[4px] overflow-hidden shrink-0">
-      <button
-        className={`w-full flex items-center gap-[clamp(4px,1vw,8px)] p-[clamp(4px,1vw,8px)] bg-transparent hover:bg-white/5 border-none cursor-pointer text-left ${medText} font-semibold text-white/80`}
-        onClick={toggle}
-        aria-expanded={open}
-      >
-        <span className={`${smallText} text-white/50 w-[1.2em] text-center`} aria-hidden="true">
-          {open ? "▾" : "▸"}
-        </span>
-        {title}
-      </button>
-      {open && (
-        <div className="border-t border-white/10 px-[clamp(6px,1.5vw,12px)] py-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(3px,0.8dvh,6px)]">
-          {children}
+      <div className="flex items-center hover:bg-white/5">
+        <button
+          className={`flex-1 min-w-0 flex items-center gap-[clamp(4px,1vw,8px)] p-[clamp(6px,1.2vw,10px)] bg-transparent border-none text-left ${medText} font-semibold text-white/95 ${children ? "cursor-pointer" : ""}`}
+          onClick={children ? toggle : undefined}
+          aria-expanded={children ? open : undefined}
+        >
+          <span className={`${smallText} text-white/60 w-[1.2em] text-center`} aria-hidden="true">
+            {children ? (open ? "▾" : "▸") : ""}
+          </span>
+          {title}
+        </button>
+        {headerControls && <div className="shrink-0 pr-[clamp(6px,1.2vw,10px)]">{headerControls}</div>}
+      </div>
+      {(pinned || (open && children)) && (
+        <div className="border-t border-white/10 px-[clamp(6px,1.5vw,12px)] py-[clamp(6px,1.2vw,10px)] flex flex-col gap-[clamp(6px,1.2dvh,9px)]">
+          {pinned}
+          {open && children}
         </div>
       )}
     </div>
@@ -80,7 +89,7 @@ interface SettingRowProps {
  *  up; the controls wrap inside their own column when the window is narrow. */
 export function SettingRow({ label, title, hint, alignTop, children }: SettingRowProps) {
   return (
-    <div className={`flex flex-col gap-[1px] ${smallText} text-white/60`}>
+    <div className={`flex flex-col gap-[2px] ${smallText} text-white/85`}>
       <div className={`flex ${alignTop ? "items-start" : "items-center"} gap-[clamp(4px,1vw,8px)]`}>
         <span className={`${settingLabelCls} ${alignTop ? "pt-[2px]" : ""}`} title={title}>
           {label}
@@ -90,7 +99,7 @@ export function SettingRow({ label, title, hint, alignTop, children }: SettingRo
       {hint && (
         <div className="flex gap-[clamp(4px,1vw,8px)]">
           <span className={settingLabelCls} aria-hidden="true" />
-          <span className="flex-1 min-w-0 text-white/35">{hint}</span>
+          <span className="flex-1 min-w-0 text-white/55 leading-snug">{hint}</span>
         </div>
       )}
     </div>
@@ -103,13 +112,13 @@ interface SegmentedProps<T extends string> {
   onChange: (value: T) => void;
 }
 
-function Chip({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
+export function Chip({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
   return (
     <button
-      className={`px-[clamp(4px,0.8vw,8px)] py-[1px] rounded-[3px] border-none cursor-pointer ${smallText} font-medium`}
+      className={`px-[clamp(6px,1vw,10px)] py-[2px] rounded-[3px] border-none cursor-pointer ${smallText} font-medium`}
       style={{
         backgroundColor: on ? "var(--accent)" : "rgba(255,255,255,0.1)",
-        color: on ? "var(--accent-fg)" : "rgba(255,255,255,0.7)",
+        color: on ? "var(--accent-fg)" : "rgba(255,255,255,0.8)",
       }}
       aria-pressed={on}
       onClick={onClick}

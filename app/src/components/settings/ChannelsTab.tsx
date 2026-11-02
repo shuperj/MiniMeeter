@@ -1,8 +1,8 @@
-import { useState } from "react";
 import type { ChannelConfig } from "../../config";
 import type { EditionInfo, LaunchEdition } from "../../types/edition";
 import { EDITION_NAMES, stripLabel, shortStripLabel } from "../../lib/editions";
 import HotkeyRecorder from "./HotkeyRecorder";
+import SettingsGroup from "./SettingsGroup";
 import {
   inputCls,
   smallText,
@@ -22,6 +22,9 @@ interface ChannelsTabProps {
   editionIsLive: boolean;
   launchEdition: LaunchEdition;
   onLaunchEditionChange: (next: LaunchEdition) => void;
+  systemKeys: boolean;
+  systemKeysBlocked: boolean;
+  onSystemKeysChange: (enabled: boolean) => void;
 }
 
 const LAUNCH_OPTIONS: { value: LaunchEdition; label: string }[] = [
@@ -37,10 +40,10 @@ export default function ChannelsTab({
   editionIsLive,
   launchEdition,
   onLaunchEditionChange,
+  systemKeys,
+  systemKeysBlocked,
+  onSystemKeysChange,
 }: ChannelsTabProps) {
-  // Only one channel's details open at a time — the row was too dense flat.
-  const [expandedCh, setExpandedCh] = useState<number | null>(null);
-
   const availableStrips = edition.strips.map((s) => s.index);
 
   /**
@@ -56,12 +59,10 @@ export default function ChannelsTab({
   };
 
   const removeChannel = (idx: number) => {
-    setExpandedCh(null);
     onChange(draft.filter((_, i) => i !== idx));
   };
 
   const moveChannel = (idx: number, dir: -1 | 1) => {
-    setExpandedCh(null);
     const target = idx + dir;
     if (target < 0 || target >= draft.length) return;
     const next = [...draft];
@@ -78,10 +79,6 @@ export default function ChannelsTab({
         label: shortStripLabel(edition, nextStrip),
         strip: nextStrip,
         hasMute: false,
-        minDb: -36,
-        maxDb: 12,
-        defaultDb: 0,
-        levelScale: 1,
       },
     ]);
   };
@@ -90,14 +87,14 @@ export default function ChannelsTab({
     <>
       {/* Edition — which Voicemeeter we lay strips out for, and which to launch */}
       <div className={sectionCls}>
-        <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
+        <div className={`flex items-center gap-1 ${smallText} text-white/85 flex-wrap`}>
           <span className={rowLabelCls}>Edition</span>
           <span className="text-white/80 font-semibold">{EDITION_NAMES[edition.edition]}</span>
-          <span className="text-white/35">
+          <span className="text-white/60">
             {editionIsLive ? "(detected)" : "(last seen — Voicemeeter not running)"}
           </span>
         </div>
-        <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
+        <div className={`flex items-center gap-1 ${smallText} text-white/85 flex-wrap`}>
           <span className={rowLabelCls}>Launch</span>
           <select
             className={`${inputCls} ${smallText} px-[clamp(2px,0.3vw,4px)] py-[2px] cursor-pointer max-w-full`}
@@ -115,10 +112,36 @@ export default function ChannelsTab({
         </div>
       </div>
 
+      {/* Gain structure — the Voicemeeter setup these faders assume */}
+      <SettingsGroup title="Gain structure" defaultOpen storageKey="minimeeter.channelsTab.gain.open">
+        <ul className={`m-0 pl-[1.2em] list-disc flex flex-col gap-[3px] ${smallText} text-white/85 leading-snug`}>
+          <li>Windows: leave Voicemeeter's playback devices and your apps at 100%.</li>
+          <li>Voicemeeter: keep hardware out faders at 0 dB and stay out of the red.</li>
+          <li>Mic: with its strip at 0 dB, set the interface gain so speech peaks around -18 to -12 dB.</li>
+          <li>Mix with the faders here. Double-clicking one returns it to 0 dB.</li>
+        </ul>
+        <label className={`flex items-center gap-1 ${smallText} text-white/85 cursor-pointer select-none`}>
+          <input
+            type="checkbox"
+            checked={systemKeys}
+            onChange={(e) => onSystemKeysChange(e.target.checked)}
+            className="accent-[var(--accent)] cursor-pointer"
+          />
+          Use the keyboard's volume and mute keys
+        </label>
+        <p className={`m-0 ${smallText} text-white/55 leading-snug`}>
+          They act on every hardware output at once, up to +12 dB. First <strong className="font-bold text-white/90">TURN OFF</strong> Hook Volume Keys in
+          Voicemeeter, under Menu &gt; Shortcut Key (Hook).
+        </p>
+        {systemKeys && systemKeysBlocked && (
+          <p className={`m-0 ${smallText} text-amber-300 leading-snug`}>
+            ⚠ Another program is holding these keys, most likely that Voicemeeter hook. They'll start working here as
+            soon as it lets go.
+          </p>
+        )}
+      </SettingsGroup>
+
       {draft.map((ch, idx) => {
-        const expanded = expandedCh === idx;
-        const clampedDefault = Math.max(ch.minDb, Math.min(ch.maxDb, ch.defaultDb));
-        const defaultOutOfRange = ch.defaultDb !== clampedDefault;
         const stripOutOfRange = !availableStrips.includes(ch.strip);
 
         return (
@@ -177,88 +200,18 @@ export default function ChannelsTab({
                 Mute
               </label>
 
-              <button
-                className={`ml-auto ${smallText} bg-transparent border-none cursor-pointer text-white/50 hover:text-white/90 px-1 shrink-0`}
-                onClick={() => setExpandedCh(expanded ? null : idx)}
-                aria-expanded={expanded}
-                title={expanded ? "Hide settings" : "More settings"}
-              >
-                {expanded ? "▲" : "▼"}
-              </button>
-
-              <button className={removeButtonCls} onClick={() => removeChannel(idx)} title="Remove channel">
+              <button className={`ml-auto ${removeButtonCls}`} onClick={() => removeChannel(idx)} title="Remove channel">
                 ✕
               </button>
             </div>
 
-            {expanded && (
-              <div className="border-t border-white/10 px-[clamp(6px,1.5vw,12px)] py-[clamp(4px,1vw,8px)] flex flex-col gap-[clamp(3px,0.8dvh,6px)]">
-                {/* Range */}
-                <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
-                  <span className={rowLabelCls}>Range</span>
-                  <input
-                    type="number"
-                    className={`${inputCls} ${smallText} w-[clamp(30px,7vw,44px)] px-1 py-[1px] text-center`}
-                    value={ch.minDb}
-                    onChange={(e) => updateField(idx, "minDb", Number(e.target.value))}
-                  />
-                  <span>to</span>
-                  <input
-                    type="number"
-                    className={`${inputCls} ${smallText} w-[clamp(30px,7vw,44px)] px-1 py-[1px] text-center`}
-                    value={ch.maxDb}
-                    onChange={(e) => updateField(idx, "maxDb", Number(e.target.value))}
-                  />
-                  <span>dB</span>
-                </div>
-
-                {/* Default — what a double-click on the fader snaps to */}
-                <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
-                  <span className={rowLabelCls}>Default</span>
-                  <input
-                    type="number"
-                    className={`${inputCls} ${smallText} w-[clamp(30px,7vw,44px)] px-1 py-[1px] text-center`}
-                    value={ch.defaultDb}
-                    onChange={(e) => updateField(idx, "defaultDb", Number(e.target.value))}
-                  />
-                  <span>dB</span>
-                  {defaultOutOfRange && (
-                    <span
-                      className="text-amber-300/80 cursor-help"
-                      title={`Outside this channel's range — a double-click will land on ${clampedDefault} dB instead.`}
-                    >
-                      ⚠
-                    </span>
-                  )}
-                  <span className="text-white/35">double-click the fader</span>
-                </div>
-
-                {/* Meter scale — double-click slider to reset to 1x */}
-                <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
-                  <span className={rowLabelCls}>Meter</span>
-                  <input
-                    type="range"
-                    min="0.5"
-                    max="10"
-                    step="0.25"
-                    value={ch.levelScale ?? 1}
-                    onChange={(e) => updateField(idx, "levelScale", Number(e.target.value))}
-                    onDoubleClick={() => updateField(idx, "levelScale", 1)}
-                    className="w-[clamp(40px,10vw,64px)] accent-[var(--accent)] cursor-pointer"
-                  />
-                  <span className="tabular-nums w-[3ch] text-right">{(ch.levelScale ?? 1).toFixed(1)}x</span>
-                </div>
-
-                {/* Mute hotkey */}
-                {ch.hasMute && (
-                  <div className={`flex items-center gap-1 ${smallText} text-white/60 flex-wrap`}>
-                    <span className={rowLabelCls}>Hotkey</span>
-                    <HotkeyRecorder
-                      value={ch.muteHotkey ?? ""}
-                      onChange={(accel) => updateField(idx, "muteHotkey", accel)}
-                    />
-                  </div>
-                )}
+            {ch.hasMute && (
+              <div className={`border-t border-white/10 px-[clamp(6px,1.5vw,12px)] py-[clamp(4px,1vw,8px)] flex items-center gap-1 ${smallText} text-white/85 flex-wrap`}>
+                <span className={rowLabelCls}>Hotkey</span>
+                <HotkeyRecorder
+                  value={ch.muteHotkey ?? ""}
+                  onChange={(accel) => updateField(idx, "muteHotkey", accel)}
+                />
               </div>
             )}
           </div>

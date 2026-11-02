@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { A1Device } from "./config";
+import { CHANNEL_MAX_DB, CHANNEL_MIN_DB } from "./config";
 import { clampBus } from "./lib/outputs";
 import { useVoicemeeter } from "./hooks/useVoicemeeter";
 import { useAccentColor } from "./hooks/useAccentColor";
@@ -19,6 +20,7 @@ import { knobColumns } from "./lib/knob";
 import { useElementSize } from "./hooks/useElementSize";
 import BackgroundLayer from "./components/BackgroundLayer";
 import { visualizerLevel } from "./lib/visualizerLevel";
+import { wantsNativeMenu } from "./lib/contextMenu";
 import { hexToRgb } from "./lib/color";
 import { useSpectrum } from "./hooks/useSpectrum";
 import { usesSpectrum } from "./lib/visualizerPresets";
@@ -26,6 +28,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import ConnectionOverlay from "./components/ConnectionOverlay";
 import FxBar from "./components/FxBar";
 import AppMixerPanel from "./components/AppMixerPanel";
+import AppContextMenu from "./components/AppContextMenu";
 
 /** Frame rate to run at: the setting, or a lower unfocused cap (never higher). */
 function unfocusedFps(fps: number, mode: UnfocusedVisualizerMode, focused: boolean): number {
@@ -140,14 +143,7 @@ export default function App() {
     saveStyle({ ...style, alwaysOnTop: !style.alwaysOnTop });
   };
 
-  // Whole-window opacity. Uses effectiveSettings so dragging the slider in
-  // Settings previews live, unlike the pin which must not follow previews.
-  useEffect(() => {
-    if (!styleLoaded) return;
-    invoke("set_window_opacity", { opacity: effectiveSettings.globalOpacity ?? 1 }).catch(() => {});
-  }, [effectiveSettings.globalOpacity, styleLoaded]);
-
-  const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, outputBus: savedOutputBus, saveOutputBus, loaded, needsOutputSetup, setNeedsOutputSetup } = useChannelConfig();
+  const { channels: channelConfigs, saveChannels, outputs, saveOutputs, meterDecay, saveMeterDecay, outputBus: savedOutputBus, saveOutputBus, systemKeys, saveSystemKeys, loaded, needsOutputSetup, setNeedsOutputSetup } = useChannelConfig();
   const {
     connection,
     connected,
@@ -162,6 +158,7 @@ export default function App() {
     setGain,
     setMute,
     setBusMute,
+    setBusGain,
     startDragging,
     stopDragging,
     launchVoicemeeter,
@@ -179,6 +176,7 @@ export default function App() {
   const outputBus = clampBus(savedOutputBus, hwBusCount);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   // Auto-detect A1 output device on first run
   const autoDetectRan = useRef(false);
@@ -202,8 +200,8 @@ export default function App() {
   const { groups: fxGroups, active: activeFx, saveFxGroups, toggleGroup: toggleFxGroup } =
     useFxGroups(connected);
 
-  // Sync every hotkey (mutes + FX groups) to Rust — shortcuts are handled entirely there
-  useGlobalShortcuts(channelConfigs, fxGroups);
+  // Sync every hotkey (mutes + FX groups + volume keys) to Rust — shortcuts are handled entirely there
+  const { systemKeysBlocked } = useGlobalShortcuts(channelConfigs, fxGroups, systemKeys);
 
   // Real frequency data, captured only while a visualizer that uses it is on
   // screen and animating (see hooks/useSpectrum).
@@ -246,26 +244,48 @@ export default function App() {
     ),
   };
 
+  const backgroundProps = {
+    showColor: bgProps.showColor,
+    color: bgProps.color,
+    colorOpacity: bgProps.colorOpacity,
+    showVisualizer: bgProps.showVisualizer,
+    visualizerPaused: bgProps.visualizerPaused,
+    visualizerPreset: bgProps.visualizerPreset,
+    visualizerOpacity: bgProps.visualizerOpacity,
+    visualizerIntensity: bgProps.visualizerIntensity,
+    visualizerSpeed: bgProps.visualizerSpeed,
+    visualizerFps: bgProps.visualizerFps,
+    visualizerFilters: bgProps.visualizerFilters,
+    visualizerCelEdges: bgProps.visualizerCelEdges,
+    terrainMaterial: bgProps.terrainMaterial,
+    terrainPattern: bgProps.terrainPattern,
+    masterLevel,
+    spectrum,
+  };
+
+  const openSettings = () => {
+    setAppsOpen(false);
+    setSettingsOpen(true);
+  };
+
+  // Replaces the WebView's own menu everywhere. Titlebar controls with a menu of
+  // their own have already handled the event, and the panels get no menu at all.
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (e.isDefaultPrevented() || wantsNativeMenu(e.target as Element)) return;
+    e.preventDefault();
+    if (!settingsOpen && !appsOpen) setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
   return (
-    <div className="flex flex-col h-dvh w-dvw overflow-hidden rounded-[6px] relative isolate">
+    <div
+      className="flex flex-col h-dvh w-dvw overflow-hidden rounded-[6px] relative isolate select-none"
+      onContextMenu={handleContextMenu}
+    >
       {/* Background layer — behind all content */}
+      {/* Paused under Settings, which is opaque and has its own preview. */}
       <BackgroundLayer
-        showColor={bgProps.showColor}
-        color={bgProps.color}
-        colorOpacity={bgProps.colorOpacity}
-        showVisualizer={bgProps.showVisualizer}
-        visualizerPaused={bgProps.visualizerPaused}
-        visualizerPreset={bgProps.visualizerPreset}
-        visualizerOpacity={bgProps.visualizerOpacity}
-        visualizerIntensity={bgProps.visualizerIntensity}
-        visualizerSpeed={bgProps.visualizerSpeed}
-        visualizerFps={bgProps.visualizerFps}
-        visualizerFilters={bgProps.visualizerFilters}
-        visualizerCelEdges={bgProps.visualizerCelEdges}
-        terrainMaterial={bgProps.terrainMaterial}
-        terrainPattern={bgProps.terrainPattern}
-        masterLevel={masterLevel}
-        spectrum={spectrum}
+        {...backgroundProps}
+        visualizerPaused={bgProps.visualizerPaused || settingsOpen}
       />
 
       {/* Glass overlay — rendered via CSS on #root > div */}
@@ -277,14 +297,11 @@ export default function App() {
         onOutputBusChange={saveOutputBus}
         busStates={busStates}
         onBusMuteToggle={setBusMute}
-        onSettingsClick={() => {
-          setAppsOpen(false);
-          setSettingsOpen(true);
-        }}
+        onSettingsClick={openSettings}
         onAppsClick={() => setAppsOpen((v) => !v)}
         appsOpen={appsOpen}
         busGain={busGains.get(outputBus) ?? 0}
-        showOutputLevel={effectiveSettings.showOutputLevel}
+        onBusGainReset={() => setBusGain(outputBus, 0)}
         reconnecting={reconnecting}
         pinned={style.alwaysOnTop}
         onPinToggle={togglePinned}
@@ -302,7 +319,7 @@ export default function App() {
         {loaded &&
           channelConfigs.map((ch) => {
             const state = channels.get(ch.strip) ?? {
-              gain: ch.defaultDb,
+              gain: 0,
               muted: false,
             };
             const Control = knobMode ? Knob : Fader;
@@ -311,18 +328,16 @@ export default function App() {
                 key={ch.strip}
                 label={ch.label}
                 value={state.gain}
-                min={ch.minDb}
-                max={ch.maxDb}
+                min={CHANNEL_MIN_DB}
+                max={CHANNEL_MAX_DB}
                 hasMute={ch.hasMute}
                 muted={state.muted}
                 level={levels.get(ch.strip) ?? 0}
-                levelScale={ch.levelScale ?? 1}
                 meterDecay={meterDecay}
                 onChange={(v) => setGain(ch.strip, v)}
                 onMuteToggle={(m) => setMute(ch.strip, m)}
                 onDragStart={() => startDragging(ch.strip)}
                 onDragEnd={() => stopDragging(ch.strip)}
-                defaultDb={ch.defaultDb}
               />
             );
             return knobMode ? (
@@ -334,6 +349,22 @@ export default function App() {
             );
           })}
       </div>
+
+      {contextMenu && (
+        <AppContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          knobMode={knobMode}
+          connected={connected}
+          onUnity={() => {
+            for (const ch of channelConfigs) setGain(ch.strip, 0);
+          }}
+          onToggleControls={() => saveStyle({ ...style, channelControl: knobMode ? "fader" : "knob" })}
+          onOpenApps={() => setAppsOpen(true)}
+          onOpenSettings={openSettings}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {/* Bottom accent bar — grows to show FX pills while groups are active */}
       <FxBar groups={fxGroups} active={activeFx} onToggle={toggleFxGroup} />
@@ -365,9 +396,13 @@ export default function App() {
         onSaveChannels={saveChannels}
         onSaveOutputs={saveOutputs}
         onSaveMeterDecay={saveMeterDecay}
+        systemKeys={systemKeys}
+        systemKeysBlocked={systemKeysBlocked}
+        onSaveSystemKeys={saveSystemKeys}
         onSaveStyle={saveStyle}
         onSaveFxGroups={saveFxGroups}
         onPreviewStyle={setPreviewStyle}
+        backgroundPreview={<BackgroundLayer {...backgroundProps} />}
         onClose={() => setSettingsOpen(false)}
       />
 

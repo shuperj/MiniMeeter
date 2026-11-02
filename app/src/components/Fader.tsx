@@ -12,10 +12,7 @@ interface FaderProps {
   hasMute: boolean;
   muted: boolean;
   level: number;
-  levelScale: number;
   meterDecay: number;
-  /** Value this fader snaps to on double-click. */
-  defaultDb: number;
   onChange: (value: number) => void;
   onMuteToggle: (muted: boolean) => void;
   onDragStart: () => void;
@@ -33,9 +30,7 @@ export default function Fader({
   hasMute,
   muted,
   level,
-  levelScale,
   meterDecay,
-  defaultDb,
   onChange,
   onMuteToggle,
   onDragStart,
@@ -49,7 +44,7 @@ export default function Fader({
   const paintMeter = useCallback((lvl: number) => {
     if (meterRef.current) meterRef.current.style.height = `${lvl * 100}%`;
   }, []);
-  useLevelMeter(level, levelScale, meterDecay, paintMeter);
+  useLevelMeter(level, meterDecay, paintMeter);
 
   // Normalized 0..1 where 0 = max dB (top) and 1 = min dB (bottom)
   const normalized = (max - value) / (max - min);
@@ -103,12 +98,10 @@ export default function Fader({
       lastPressTime.current = now;
 
       if (isDoubleClick) {
-        // Snap to this channel's default. Detected by timing rather than the
-        // dblclick event, because preventDefault below suppresses the
-        // compatibility mouse events that would normally produce it.
-        // The stored default can sit outside the range, so clamp it.
-        const target = Math.max(min, Math.min(max, defaultDb));
-        applyNorm((max - target) / (max - min));
+        // Snap to unity. Detected by timing rather than the dblclick event,
+        // because preventDefault below suppresses the compatibility mouse
+        // events that would normally produce it.
+        applyNorm(max / (max - min));
         return;
       }
 
@@ -122,7 +115,7 @@ export default function Fader({
       isDragging.current = true;
       onDragStart();
     },
-    [applyNorm, defaultDb, max, min, onDragStart, springY],
+    [applyNorm, max, min, onDragStart, springY],
   );
 
   const handlePointerMove = useCallback(
@@ -211,7 +204,7 @@ export default function Fader({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            title={`Double-click to reset to ${formatDb(Math.max(min, Math.min(max, defaultDb)))}`}
+            title={`Double-click to reset to ${formatDb(0)}`}
           >
             {/* Visual track */}
             <div

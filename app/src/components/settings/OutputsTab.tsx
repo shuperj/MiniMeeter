@@ -91,7 +91,7 @@ export default function OutputsTab({ draft, onChange, hwBusCount }: OutputsTabPr
         </p>
       )}
       {!deviceError && detectedDevices.length === 0 && (
-        <p className={`${smallText} text-white/40 m-0`}>
+        <p className={`${smallText} text-white/60 m-0`}>
           No output devices detected — is Voicemeeter running?
         </p>
       )}

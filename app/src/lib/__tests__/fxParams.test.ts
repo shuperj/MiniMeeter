@@ -61,7 +61,7 @@ describe("FX parameter catalog", () => {
 
   it("describes assignments with channel labels when available", () => {
     const edition = EDITION_DEFAULTS.potato;
-    const channels = [{ label: "Mic", strip: 0, hasMute: true, minDb: -30, maxDb: 9, defaultDb: 0 }];
+    const channels = [{ label: "Mic", strip: 0, hasMute: true }];
     expect(describeAssignment({ param: "Strip[0].Reverb", value: 6 }, edition, channels)).toBe(
       "Mic → Reverb send 6.0",
     );

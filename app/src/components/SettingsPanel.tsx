@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type CSSProperties, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { ChannelConfig, A1Device } from "../config";
 import type { EditionInfo, LaunchEdition } from "../types/edition";
@@ -9,8 +9,9 @@ import StyleTab from "./settings/StyleTab";
 import ChannelsTab from "./settings/ChannelsTab";
 import OutputsTab from "./settings/OutputsTab";
 import FxTab from "./settings/FxTab";
+import VisualizerPopout from "./settings/VisualizerPopout";
 import { autoDisplay } from "./settings/OutputsTab";
-import { inputCls, smallText, medText } from "./settings/shared";
+import { inputCls, panelSurfaceStyle, smallText, medText } from "./settings/shared";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -30,9 +31,15 @@ interface SettingsPanelProps {
   onSaveChannels: (channels: ChannelConfig[]) => void;
   onSaveOutputs: (outputs: A1Device[]) => void;
   onSaveMeterDecay: (decay: number) => void;
+  systemKeys: boolean;
+  /** Windows refused the volume keys; something else is holding them. */
+  systemKeysBlocked: boolean;
+  onSaveSystemKeys: (enabled: boolean) => void;
   onSaveStyle: (style: StyleSettings) => void;
   onSaveFxGroups: (groups: FxGroup[]) => void;
   onPreviewStyle?: (style: StyleSettings | null) => void;
+  /** The live background, shown in the preview popout. */
+  backgroundPreview: ReactNode;
   onClose: () => void;
 }
 
@@ -62,15 +69,22 @@ export default function SettingsPanel({
   onSaveChannels,
   onSaveOutputs,
   onSaveMeterDecay,
+  systemKeys,
+  systemKeysBlocked,
+  onSaveSystemKeys,
   onSaveStyle,
   onSaveFxGroups,
   onPreviewStyle,
+  backgroundPreview,
   onClose,
 }: SettingsPanelProps) {
   const [tab, setTab] = useState<Tab>("style");
   const [chDraft, setChDraft] = useState<ChannelConfig[]>([]);
   const [outDraft, setOutDraft] = useState<A1Device[]>([]);
   const [decayDraft, setDecayDraft] = useState(0.3);
+  const [systemKeysDraft, setSystemKeysDraft] = useState(false);
+  // The panel is opaque so it can be read, so visualizer changes are watched here.
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [styleDraft, setStyleDraft] = useState<StyleSettings>(DEFAULT_STYLE_SETTINGS);
   const [fxDraft, setFxDraft] = useState<FxGroup[]>([]);
 
@@ -86,6 +100,8 @@ export default function SettingsPanel({
       setChDraft(channels.map((c) => ({ ...c })));
       setOutDraft(outputs.map((o) => ({ ...o })));
       setDecayDraft(meterDecay);
+      setSystemKeysDraft(systemKeys);
+      setPreviewOpen(false);
       setStyleDraft({ ...DEFAULT_STYLE_SETTINGS, ...styleSettings });
       setFxDraft(fxGroups.map((g) => ({ ...g, assignments: g.assignments.map((a) => ({ ...a })) })));
     }
@@ -111,6 +127,7 @@ export default function SettingsPanel({
     onSaveChannels(chDraft);
     onSaveOutputs(finalOutputs);
     onSaveMeterDecay(decayDraft);
+    onSaveSystemKeys(systemKeysDraft);
     // alwaysOnTop isn't editable here — carry the live value so pinning while the
     // panel is open doesn't get reverted by a stale draft.
     onSaveStyle({ ...styleDraft, alwaysOnTop: styleSettings.alwaysOnTop });
@@ -122,17 +139,18 @@ export default function SettingsPanel({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="absolute inset-0 z-50 flex flex-col rounded-[6px] overflow-hidden"
+          className="absolute inset-0 z-50 flex flex-col rounded-[6px] overflow-hidden select-text"
+          style={panelSurfaceStyle as CSSProperties}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
         >
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-[#1a1a1a]/90" onClick={onClose} />
+          <div className="absolute inset-0 bg-[#17171a]" onClick={onClose} />
 
           {/* Panel content */}
-          <div className="relative flex flex-col flex-1 p-[clamp(8px,2vw,16px)] gap-[clamp(6px,1.5dvh,12px)] overflow-hidden">
+          <div className="relative flex flex-col flex-1 w-full max-w-[640px] mx-auto min-h-0 p-[clamp(8px,2vw,16px)] gap-[clamp(6px,1.5dvh,12px)] overflow-hidden">
             {/* Header + close */}
             <div className="flex items-center justify-between">
               <span className="text-[clamp(0.7rem,2.5vw,0.95rem)] font-bold text-white/90">Settings</span>
@@ -171,6 +189,9 @@ export default function SettingsPanel({
                   editionIsLive={editionIsLive}
                   launchEdition={launchEdition}
                   onLaunchEditionChange={onLaunchEditionChange}
+                  systemKeys={systemKeysDraft}
+                  systemKeysBlocked={systemKeysBlocked}
+                  onSystemKeysChange={setSystemKeysDraft}
                 />
               )}
 
@@ -180,6 +201,8 @@ export default function SettingsPanel({
                   onChange={setStyleDraft}
                   meterDecay={decayDraft}
                   onMeterDecayChange={setDecayDraft}
+                  previewOpen={previewOpen}
+                  onPreviewToggle={() => setPreviewOpen((v) => !v)}
                   smallText={smallText}
                   medText={medText}
                   inputCls={inputCls}
@@ -225,6 +248,10 @@ export default function SettingsPanel({
               </button>
             </div>
           </div>
+
+          {previewOpen && tab === "style" && styleDraft.background.backgroundMode === "visualizer" && (
+            <VisualizerPopout onClose={() => setPreviewOpen(false)}>{backgroundPreview}</VisualizerPopout>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

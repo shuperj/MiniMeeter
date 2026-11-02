@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { levelToMeter } from "../lib/meterScale";
 
 /**
  * Live level meter shared by faders and knobs: smooth tracking while there is
@@ -8,7 +9,6 @@ import { useEffect, useRef } from "react";
  */
 export function useLevelMeter(
   level: number,
-  levelScale: number,
   meterDecay: number,
   paint: (displayLevel: number) => void,
 ) {
@@ -17,8 +17,8 @@ export function useLevelMeter(
   const paintRef = useRef(paint);
 
   useEffect(() => {
-    targetLevel.current = level * levelScale;
-  }, [level, levelScale]);
+    targetLevel.current = levelToMeter(level);
+  }, [level]);
 
   useEffect(() => {
     decayRef.current = meterDecay;

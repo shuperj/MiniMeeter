@@ -140,7 +140,7 @@ export default function FxTab({ draft, onChange, edition, channels, saved, activ
                 placeholder="Name"
               />
 
-              <span className={`${smallText} text-white/40 truncate min-w-0 flex-1`}>
+              <span className={`${smallText} text-white/60 truncate min-w-0 flex-1`}>
                 {g.assignments.length === 0
                   ? "No assignments"
                   : `${g.assignments.length} assignment${g.assignments.length === 1 ? "" : "s"}`}
@@ -183,7 +183,7 @@ export default function FxTab({ draft, onChange, edition, channels, saved, activ
                 </div>
 
                 <div className={`flex flex-col gap-[clamp(3px,0.8dvh,6px)] ${smallText}`}>
-                  <span className="text-white/40">Sets</span>
+                  <span className="text-white/60">Sets</span>
                   {g.assignments.map((a, i) => (
                     <div key={i} className="flex flex-col gap-[2px] bg-white/5 rounded-[3px] p-[clamp(3px,0.6vw,5px)]">
                       <FxAssignmentEditor
@@ -193,7 +193,7 @@ export default function FxTab({ draft, onChange, edition, channels, saved, activ
                         edition={edition}
                         channels={channels}
                       />
-                      <span className="text-white/35 truncate">{describeAssignment(a, edition, channels)}</span>
+                      <span className="text-white/60 truncate">{describeAssignment(a, edition, channels)}</span>
                     </div>
                   ))}
                   <button className={addButtonCls} onClick={() => addAssignment(g.id)}>

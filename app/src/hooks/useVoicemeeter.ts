@@ -79,7 +79,7 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
   const [channels, setChannels] = useState<Map<number, ChannelState>>(() => {
     const map = new Map<number, ChannelState>();
     for (const ch of channelConfigs) {
-      map.set(ch.strip, { gain: ch.defaultDb, muted: false });
+      map.set(ch.strip, { gain: 0, muted: false });
     }
     return map;
   });
@@ -243,6 +243,15 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
     }
   }, []);
 
+  const setBusGain = useCallback(async (bus: number, value: number) => {
+    setBusGains((prev) => new Map(prev).set(bus, value));
+    try {
+      await invoke("vm_set_bus_gain", { bus, value });
+    } catch {
+      // Silently fail — polling will correct state
+    }
+  }, []);
+
   const setBusMute = useCallback(async (bus: number, muted: boolean) => {
     setBusStates((prev) => {
       const next = new Map(prev);
@@ -287,6 +296,7 @@ export function useVoicemeeter(channelConfigs: ChannelConfig[]) {
     setGain,
     setMute,
     setBusMute,
+    setBusGain,
     startDragging,
     stopDragging,
     launchVoicemeeter,

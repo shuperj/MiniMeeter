@@ -1,12 +1,19 @@
 /** Class strings shared by every Settings tab so they read as one surface. */
+/** On a full-window panel: dark native controls, and an accent that stays visible
+ *  on the panel's background however dark the user's own accent is. */
+export const panelSurfaceStyle = {
+  colorScheme: "dark",
+  "--accent": "var(--accent-ui)",
+  "--accent-fg": "var(--accent-ui-fg)",
+};
 export const inputCls =
   "bg-white/10 border border-white/20 rounded-[3px] text-white/90 outline-none focus:border-[var(--accent)]";
-export const smallText = "text-[clamp(0.5rem,1.5vw,0.65rem)]";
-export const medText = "text-[clamp(0.55rem,1.8vw,0.75rem)]";
-export const rowLabelCls = "w-[clamp(34px,9vw,52px)] shrink-0 text-white/40";
+export const smallText = "text-[clamp(0.6875rem,1.6vw,0.75rem)]";
+export const medText = "text-[clamp(0.75rem,1.8vw,0.8125rem)]";
+export const rowLabelCls = "w-[clamp(44px,12vw,64px)] shrink-0 text-white/65";
 /** Label column of a Style-tab SettingRow: wider than rowLabelCls so
  *  "Accent color" / "Reactivity" fit, and allowed to wrap onto two lines. */
-export const settingLabelCls = "w-[clamp(48px,13vw,76px)] shrink-0 text-white/40 leading-tight";
+export const settingLabelCls = "w-[clamp(56px,15vw,88px)] shrink-0 text-white/65 leading-tight";
 export const sliderCls = "flex-1 min-w-[clamp(40px,10vw,80px)] accent-[var(--accent)] cursor-pointer";
 /** Fixed-width numeric readout beside a slider. */
 export const sliderValueCls = "tabular-nums w-[4ch] text-right shrink-0";

@@ -31,8 +31,8 @@ function InitialTile({ name }: { name: string }) {
 }
 
 /**
- * One app: icon, name, horizontal volume slider, percentage, mute, hide, and a
- * thin live meter under the slider. At 200px the name wraps onto its own line.
+ * One app: icon, name, volume slider, mute, and a thin live meter along the
+ * bottom. Hide appears on hover. In a narrow window the name takes its own line.
  */
 export default function AppSessionRow({
   session,
@@ -46,12 +46,12 @@ export default function AppSessionRow({
 }: AppSessionRowProps) {
   const pct = Math.round(session.volume * 100);
   const idle = session.state !== "active";
-  const iconBox = "w-[clamp(12px,3.2vw,18px)] h-[clamp(12px,3.2vw,18px)] shrink-0";
+  const iconBox = "w-[clamp(15px,3.2vw,18px)] h-[clamp(15px,3.2vw,18px)] shrink-0";
 
   return (
     <div
-      className="relative flex flex-wrap items-center gap-x-[clamp(4px,1vw,8px)] gap-y-[2px] bg-white/5 rounded-[4px] px-[clamp(5px,1.2vw,8px)] pt-[clamp(3px,0.6dvh,6px)] pb-[clamp(5px,1dvh,8px)] overflow-hidden"
-      style={{ opacity: hidden ? 0.45 : idle ? 0.6 : 1 }}
+      className="group relative flex flex-wrap items-center gap-x-[clamp(4px,1vw,8px)] gap-y-[2px] px-[clamp(6px,1.2vw,10px)] py-[clamp(4px,0.8dvh,6px)] overflow-hidden hover:bg-white/5"
+      style={{ opacity: hidden ? 0.55 : idle ? 0.75 : 1 }}
     >
       {/* Icon + name share a line at every width; the controls wrap below on narrow windows */}
       <span className="flex items-center gap-[clamp(3px,0.8vw,6px)] min-w-0 basis-full min-[300px]:basis-auto min-[300px]:w-[clamp(70px,22vw,130px)]">
@@ -63,7 +63,7 @@ export default function AppSessionRow({
           )}
         </span>
         <span
-          className="truncate font-semibold text-white/85 text-[clamp(0.55rem,1.8vw,0.75rem)]"
+          className="truncate text-white/90 text-[clamp(0.6875rem,1.8vw,0.75rem)]"
           title={`${session.display}${session.process && session.process !== session.display ? ` (${session.process})` : ""}${idle ? " — not playing" : ""}`}
         >
           {session.display}
@@ -86,15 +86,14 @@ export default function AppSessionRow({
         }}
         className="flex-1 min-w-[56px] h-[clamp(10px,2.5dvh,16px)] accent-[var(--accent)] cursor-pointer"
         aria-label={`${session.display} volume`}
+        title={`${pct}%`}
       />
-
-      <span className="tabular-nums w-[4ch] text-right text-white/60 text-[clamp(0.5rem,1.5vw,0.65rem)]">{pct}%</span>
 
       <MuteButton muted={session.muted} onToggle={() => onMute(!session.muted)} />
 
       {/* Hide / unhide */}
       <button
-        className="flex items-center justify-center rounded-[3px] border-none bg-transparent cursor-pointer text-white/35 hover:text-white/80 hover:bg-white/10 w-[clamp(14px,3.5vw,20px)] h-[clamp(14px,3.5vw,20px)] shrink-0"
+        className={`flex items-center justify-center rounded-[3px] border-none bg-transparent cursor-pointer text-white/60 hover:text-white/90 hover:bg-white/10 w-[clamp(16px,3.5vw,20px)] h-[clamp(16px,3.5vw,20px)] shrink-0 focus-visible:opacity-100 ${hidden ? "" : "opacity-0 group-hover:opacity-100"}`}
         onClick={onToggleHidden}
         title={hidden ? "Show this app under this input again" : "Hide this app under this input"}
         aria-pressed={hidden}
