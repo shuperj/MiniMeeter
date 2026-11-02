@@ -106,7 +106,9 @@ export interface StyleSettings {
   background: BackgroundStyle;
   /** Keep the window above other windows. Toggled by the titlebar pin. */
   alwaysOnTop: boolean;
-  /** Named window sizes, reachable by right-clicking the minimize button. */
+  /** Hide the mixer, leaving just the background and titlebar. */
+  hideUi: boolean;
+  /** Named window sizes, reachable by right-clicking the titlebar. */
   windowPresets: WindowPreset[];
 }
 
@@ -147,5 +149,6 @@ export const DEFAULT_STYLE_SETTINGS: StyleSettings = {
   faderGlass: 1,
   background: { ...DEFAULT_BACKGROUND_STYLE },
   alwaysOnTop: false,
+  hideUi: false,
   windowPresets: [...DEFAULT_WINDOW_PRESETS],
 };

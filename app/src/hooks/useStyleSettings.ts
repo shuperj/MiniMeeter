@@ -4,6 +4,7 @@ import type { StyleSettings, BackgroundStyle } from "../types/style";
 import { DEFAULT_STYLE_SETTINGS, DEFAULT_BACKGROUND_STYLE, DEFAULT_VISUALIZER_PALETTE, VISUALIZER_FPS_OPTIONS } from "../types/style";
 import { normalizePalette } from "../lib/color";
 import { normalizeFilters } from "../lib/visualizerFilter";
+import { withoutLegacyStyleFields } from "../lib/legacySettings";
 import { normalizePresetStyles, TERRAIN_MATERIALS, TERRAIN_PATTERNS } from "../lib/presetStyles";
 
 const STYLE_KEY = "style";
@@ -114,7 +115,10 @@ export function useStyleSettings() {
         const store = await load("settings.json", { defaults: {}, autoSave: true });
         const saved = await store.get<Record<string, unknown>>(STYLE_KEY);
         if (!cancelled && saved) {
-          setStyle(migrateSettings(saved));
+          const cleaned = withoutLegacyStyleFields(saved);
+          const migrated = migrateSettings(cleaned);
+          setStyle(migrated);
+          if (cleaned !== saved) await store.set(STYLE_KEY, migrated);
         }
       } catch {
         // First run or corrupt store — use defaults

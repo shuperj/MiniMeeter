@@ -248,7 +248,7 @@ export default function StyleTab({
       </SettingsGroup>
 
       <SettingsGroup title="Window" storageKey="minimeeter.styleTab.window.open">
-        <SettingRow label="Sizes" alignTop hint="Right-click the minimize button to switch between these.">
+        <SettingRow label="Sizes" alignTop hint="Right-click the title bar to switch between these.">
           <div className="w-full flex flex-col gap-[clamp(2px,0.5dvh,4px)]">
             {presets.map((preset, idx) => (
               <div key={idx} className="flex flex-wrap items-center gap-[clamp(3px,0.8vw,6px)]">

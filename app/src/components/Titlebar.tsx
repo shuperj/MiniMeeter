@@ -5,6 +5,7 @@ import type { A1Device } from "../config";
 import type { WindowPreset } from "../types/style";
 import type { BusStatus } from "../hooks/useVoicemeeter";
 import { useDismiss } from "../hooks/useDismiss";
+import ContextMenu, { contextDividerCls, contextHeaderCls, contextItemCls } from "./ContextMenu";
 import { activeOutputIndex, busLabel, outputsForBus } from "../lib/outputs";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -29,7 +30,7 @@ interface TitlebarProps {
   reconnecting?: boolean;
   pinned: boolean;
   onPinToggle: () => void;
-  /** Sizes offered when right-clicking the minimize button. */
+  /** Sizes offered when right-clicking the titlebar. */
   windowPresets: WindowPreset[];
 }
 
@@ -69,12 +70,10 @@ export default function Titlebar({ outputs, outputBus, hwBusCount, onOutputBusCh
   const [switchError, setSwitchError] = useState<string | null>(null);
   // The device just picked, shown until Voicemeeter reports it back.
   const [pending, setPending] = useState<{ bus: number; name: string } | null>(null);
-  const [presetMenuOpen, setPresetMenuOpen] = useState(false);
+  const [titleMenu, setTitleMenu] = useState<{ x: number; y: number } | null>(null);
   const [busMenuOpen, setBusMenuOpen] = useState(false);
-  const presetMenuRef = useRef<HTMLDivElement>(null);
   const busMenuRef = useRef<HTMLDivElement>(null);
 
-  useDismiss(presetMenuOpen, presetMenuRef, () => setPresetMenuOpen(false));
   useDismiss(busMenuOpen, busMenuRef, () => setBusMenuOpen(false));
 
   const label = busLabel(outputBus);
@@ -97,7 +96,7 @@ export default function Titlebar({ outputs, outputBus, hwBusCount, onOutputBusCh
   }, [busStates, pending, switching]);
 
   const applyPreset = async (preset: WindowPreset) => {
-    setPresetMenuOpen(false);
+    setTitleMenu(null);
     try {
       await appWindow.setSize(new LogicalSize(preset.width, preset.height));
     } catch {
@@ -135,28 +134,13 @@ export default function Titlebar({ outputs, outputBus, hwBusCount, onOutputBusCh
       className="relative z-[45] flex items-center h-[clamp(24px,8dvh,36px)] px-[clamp(6px,2vw,12px)] select-none shrink-0"
       style={SURFACE}
       data-tauri-drag-region
+      onContextMenu={(e) => {
+        // The output picker has its own menu and has already handled the event.
+        if (e.isDefaultPrevented()) return;
+        e.preventDefault();
+        setTitleMenu({ x: e.clientX, y: e.clientY });
+      }}
     >
-      {/* Pin / always-on-top */}
-      <button
-        className="w-[clamp(16px,4vw,24px)] h-[clamp(16px,4dvh,24px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer hover:bg-white/20 mr-[clamp(2px,0.5vw,6px)] shrink-0"
-        style={{
-          color: "var(--titlebar-fg)",
-          backgroundColor: pinned ? "rgba(255,255,255,0.28)" : "transparent",
-          opacity: pinned ? 1 : 0.65,
-        }}
-        onClick={onPinToggle}
-        title={pinned ? "Unpin — allow other windows on top" : "Pin — keep on top of other windows"}
-        aria-pressed={pinned}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="currentColor"
-          className="w-[clamp(10px,2.5vw,14px)] h-[clamp(10px,2.5vw,14px)]"
-        >
-          <path d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z" />
-        </svg>
-      </button>
-
       {/* Settings gear */}
       <button
         className="w-[clamp(16px,4vw,24px)] h-[clamp(16px,4dvh,24px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer hover:bg-white/20 mr-[clamp(2px,0.5vw,6px)] shrink-0"
@@ -321,45 +305,14 @@ export default function Titlebar({ outputs, outputBus, hwBusCount, onOutputBusCh
 
       {/* Window controls — never squeezed; the picker gives way instead */}
       <div className="flex items-center gap-[2px] shrink-0">
-        {/* Minimize — right-click opens the window-size presets */}
-        <div className="relative" ref={presetMenuRef}>
-          <button
-            className="w-[clamp(18px,4vw,28px)] h-[clamp(16px,4dvh,28px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer text-[clamp(0.5rem,1.5vw,0.7rem)] hover:bg-white/20"
-            style={{ color: "var(--titlebar-fg)", backgroundColor: "transparent" }}
-            onClick={() => appWindow.minimize()}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setPresetMenuOpen((v) => !v);
-            }}
-            title="Minimize (right-click for window sizes)"
-          >
-            ─
-          </button>
-
-          {presetMenuOpen && (
-            <div className={menuCls}>
-              <div className={menuHeaderCls}>Window size</div>
-              {windowPresets.length === 0 ? (
-                <div className="px-2 py-1 text-[clamp(0.5rem,1.5vw,0.65rem)] text-white/40">
-                  None — add some in Settings
-                </div>
-              ) : (
-                windowPresets.map((preset, i) => (
-                  <button
-                    key={`${preset.name}-${i}`}
-                    className={menuItemCls}
-                    onClick={() => applyPreset(preset)}
-                  >
-                    <span className="truncate">{preset.name}</span>
-                    <span className="tabular-nums text-white/40 shrink-0">
-                      {preset.width}x{preset.height}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          )}
-        </div>
+        <button
+          className="w-[clamp(18px,4vw,28px)] h-[clamp(16px,4dvh,28px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer text-[clamp(0.5rem,1.5vw,0.7rem)] hover:bg-white/20"
+          style={{ color: "var(--titlebar-fg)", backgroundColor: "transparent" }}
+          onClick={() => appWindow.minimize()}
+          title="Minimize"
+        >
+          ─
+        </button>
         <button
           className="w-[clamp(18px,4vw,28px)] h-[clamp(16px,4dvh,28px)] flex items-center justify-center rounded-[3px] border-none cursor-pointer text-[clamp(0.5rem,1.5vw,0.7rem)] hover:bg-red-500/80"
           style={{ color: "var(--titlebar-fg)", backgroundColor: "transparent" }}
@@ -368,6 +321,44 @@ export default function Titlebar({ outputs, outputBus, hwBusCount, onOutputBusCh
           ✕
         </button>
       </div>
+
+      {titleMenu && (
+        <ContextMenu x={titleMenu.x} y={titleMenu.y} onClose={() => setTitleMenu(null)}>
+          <button
+            role="menuitemcheckbox"
+            aria-checked={pinned}
+            className={contextItemCls}
+            onClick={() => {
+              setTitleMenu(null);
+              onPinToggle();
+            }}
+          >
+            Pin window
+            <span aria-hidden="true">{pinned ? "✓" : ""}</span>
+          </button>
+          <div className={contextDividerCls} />
+          <div className={contextHeaderCls}>Window size</div>
+          {windowPresets.length === 0 ? (
+            <div className="px-3 py-1 text-[clamp(0.6875rem,1.6vw,0.75rem)] text-white/55 whitespace-nowrap">
+              None — add some in Settings
+            </div>
+          ) : (
+            windowPresets.map((preset, i) => (
+              <button
+                key={`${preset.name}-${i}`}
+                role="menuitem"
+                className={contextItemCls}
+                onClick={() => applyPreset(preset)}
+              >
+                {preset.name}
+                <span className="tabular-nums text-white/55">
+                  {preset.width}x{preset.height}
+                </span>
+              </button>
+            ))
+          )}
+        </ContextMenu>
+      )}
     </div>
   );
 }

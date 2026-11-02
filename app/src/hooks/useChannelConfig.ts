@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { load } from "@tauri-apps/plugin-store";
 import type { ChannelConfig, A1Device } from "../config";
 import { DEFAULT_CHANNELS, DEFAULT_A1_CHOICES, DEFAULT_METER_DECAY } from "../config";
+import { withoutLegacyChannelFields } from "../lib/legacySettings";
 
 const CHANNELS_KEY = "channels";
 const OUTPUTS_KEY = "outputs";
@@ -28,7 +29,9 @@ export function useChannelConfig() {
         const savedCh = await store.get<ChannelConfig[]>(CHANNELS_KEY);
         const savedOut = await store.get<A1Device[]>(OUTPUTS_KEY);
         if (!cancelled && savedCh && savedCh.length > 0) {
-          setChannels(savedCh);
+          const cleaned = withoutLegacyChannelFields(savedCh);
+          setChannels(cleaned);
+          if (cleaned !== savedCh) await store.set(CHANNELS_KEY, cleaned);
         }
         if (!cancelled && savedOut && savedOut.length > 0) {
           setOutputs(savedOut);

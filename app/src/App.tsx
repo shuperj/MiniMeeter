@@ -317,6 +317,7 @@ export default function App() {
         style={knobMode ? { gap: knobGap } : faderContainerStyle}
       >
         {loaded &&
+          !effectiveSettings.hideUi &&
           channelConfigs.map((ch) => {
             const state = channels.get(ch.strip) ?? {
               gain: 0,
@@ -355,11 +356,13 @@ export default function App() {
           x={contextMenu.x}
           y={contextMenu.y}
           knobMode={knobMode}
+          uiHidden={style.hideUi}
           connected={connected}
           onUnity={() => {
             for (const ch of channelConfigs) setGain(ch.strip, 0);
           }}
           onToggleControls={() => saveStyle({ ...style, channelControl: knobMode ? "fader" : "knob" })}
+          onToggleUi={() => saveStyle({ ...style, hideUi: !style.hideUi })}
           onOpenApps={() => setAppsOpen(true)}
           onOpenSettings={openSettings}
           onClose={() => setContextMenu(null)}
@@ -367,7 +370,7 @@ export default function App() {
       )}
 
       {/* Bottom accent bar — grows to show FX pills while groups are active */}
-      <FxBar groups={fxGroups} active={activeFx} onToggle={toggleFxGroup} />
+      {!effectiveSettings.hideUi && <FxBar groups={fxGroups} active={activeFx} onToggle={toggleFxGroup} />}
 
       {/* Per-app mixer slide-over */}
       <AppMixerPanel
